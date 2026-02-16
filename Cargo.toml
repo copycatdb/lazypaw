@@ -17,7 +17,8 @@ path = "src/main.rs"
 claw = { git = "https://github.com/copycatdb/claw.git", branch = "main", features = ["arrow"] }
 tokio = { version = "1", features = ["full"] }
 tokio-util = { version = "0.7", features = ["compat"] }
-axum = { version = "0.8", features = ["json"] }
+axum = { version = "0.8", features = ["json", "ws"] }
+futures-util = "0.3"
 tower = "0.5"
 tower-http = { version = "0.6", features = ["cors", "trace"] }
 serde = { version = "1", features = ["derive"] }

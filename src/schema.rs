@@ -44,6 +44,7 @@ pub struct TableInfo {
     pub foreign_keys: Vec<ForeignKey>,
     pub unique_constraints: Vec<Vec<String>>,
     pub is_view: bool,
+    pub change_tracking_enabled: bool,
 }
 
 impl TableInfo {
@@ -209,6 +210,7 @@ pub async fn load_schema(pool: &Arc<Pool>) -> Result<SchemaCache, Error> {
                 foreign_keys: Vec::new(),
                 unique_constraints: Vec::new(),
                 is_view,
+                change_tracking_enabled: false,
             },
         );
     }
@@ -394,6 +396,31 @@ pub async fn load_schema(pool: &Arc<Pool>) -> Result<SchemaCache, Error> {
     }
 
     let count = tables.len();
+
+    // 6. Load change tracking status
+    let ct_rows = client
+        .execute(
+            "SELECT s.name AS schema_name, t.name AS table_name \
+             FROM sys.change_tracking_tables ct \
+             JOIN sys.tables t ON ct.object_id = t.object_id \
+             JOIN sys.schemas s ON t.schema_id = s.schema_id",
+            &[],
+        )
+        .await;
+    // Change tracking may not be enabled on the database — that's fine, just skip
+    if let Ok(ct_stream) = ct_rows {
+        if let Ok(ct_result) = ct_stream.into_first_result().await {
+            for row in &ct_result {
+                let schema: &str = row.get("schema_name").unwrap_or("dbo");
+                let table: &str = row.get("table_name").unwrap_or("");
+                let key = (schema.to_string(), table.to_string());
+                if let Some(table_info) = tables.get_mut(&key) {
+                    table_info.change_tracking_enabled = true;
+                }
+            }
+        }
+    }
+
     tracing::info!("Schema loaded: {} tables/views", count);
 
     Ok(SchemaCache {

@@ -2,23 +2,40 @@
 
 use crate::handlers::{self, AppState};
 use crate::openapi;
+use crate::realtime::RealtimeEngine;
+use crate::realtime_ws;
 use axum::extract::State;
 use axum::http::{HeaderMap, StatusCode};
 use axum::response::{Html, IntoResponse, Response};
 use axum::routing::{get, post};
 use axum::Router;
+use std::sync::Arc;
 use tower_http::cors::CorsLayer;
 use tower_http::trace::TraceLayer;
 
 /// Build the axum router from the schema.
-pub fn build_router(state: AppState) -> Router {
-    Router::new()
+pub fn build_router(state: AppState, engine: Option<Arc<RealtimeEngine>>) -> Router {
+    let mut router = Router::new()
         // OpenAPI spec at root
         .route("/", get(handle_openapi))
         // Swagger UI
         .route("/swagger", get(handle_swagger))
         // RPC endpoint
-        .route("/rpc/{procedure}", post(handlers::handle_rpc))
+        .route("/rpc/{procedure}", post(handlers::handle_rpc));
+
+    // Realtime websocket endpoint
+    if let Some(engine) = engine {
+        let ws_state = realtime_ws::WsState {
+            engine,
+            config: state.config.clone(),
+        };
+        router = router.route(
+            "/realtime",
+            get(realtime_ws::ws_handler).with_state(ws_state),
+        );
+    }
+
+    router
         // Table endpoints: /{table} (default schema) and /{schema}/{table}
         .route(
             "/{*path}",
