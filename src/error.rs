@@ -123,9 +123,8 @@ fn sql_error_to_status(msg: &str) -> StatusCode {
         || upper.contains("VIOLATION OF UNIQUE KEY")
         || upper.contains("CANNOT INSERT DUPLICATE")
         || upper.contains("UNIQUE CONSTRAINT")
+        || upper.contains("FOREIGN KEY")
     {
-        StatusCode::CONFLICT
-    } else if upper.contains("FOREIGN KEY") {
         StatusCode::CONFLICT
     } else if upper.contains("PERMISSION DENIED") || upper.contains("ACCESS DENIED") {
         StatusCode::FORBIDDEN

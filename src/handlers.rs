@@ -829,13 +829,14 @@ fn build_mutation_response(
 }
 
 /// Handle embedding of related tables.
+#[allow(clippy::too_many_arguments)]
 async fn handle_embeds(
     state: &AppState,
     schema_cache: &SchemaCache,
     schema_name: &str,
     table_name: &str,
     embeds: &[&EmbedSelect],
-    rows: &mut Vec<serde_json::Map<String, JsonValue>>,
+    rows: &mut [serde_json::Map<String, JsonValue>],
     _query_params: &HashMap<String, String>,
     claims: &Option<auth::Claims>,
     extra_join_cols: &[String],

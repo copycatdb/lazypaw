@@ -339,10 +339,8 @@ impl AppConfig {
 
         let context_claims: Vec<String> = if let Some(ref cc) = args.context_claims {
             cc.split(',').map(|s| s.trim().to_string()).collect()
-        } else if let Some(cc) = file_auth.context_claims {
-            cc
         } else {
-            Vec::new()
+            file_auth.context_claims.unwrap_or_default()
         };
 
         let role_map = file_auth.role_map.unwrap_or_default();

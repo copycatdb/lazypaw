@@ -67,13 +67,16 @@ impl TableInfo {
     }
 }
 
+/// Reverse FK lookup: (ref_schema, ref_table) → list of (src_schema, src_table, fk).
+type ReverseFkMap = HashMap<(String, String), Vec<(String, String, ForeignKey)>>;
+
 /// The complete schema model loaded from the database.
 #[derive(Debug, Clone)]
 pub struct SchemaCache {
     /// Key: (schema, table_name) -> TableInfo
     pub tables: HashMap<(String, String), TableInfo>,
     /// Reverse FK index: (ref_schema, ref_table) -> list of tables that reference it
-    pub reverse_fks: HashMap<(String, String), Vec<(String, String, ForeignKey)>>,
+    pub reverse_fks: ReverseFkMap,
 }
 
 impl SchemaCache {
@@ -332,8 +335,7 @@ pub async fn load_schema(pool: &Arc<Pool>) -> Result<SchemaCache, Error> {
         .await
         .map_err(|e| Error::Sql(e.to_string()))?;
 
-    let mut reverse_fks: HashMap<(String, String), Vec<(String, String, ForeignKey)>> =
-        HashMap::new();
+    let mut reverse_fks: ReverseFkMap = HashMap::new();
 
     for row in &fk_rows {
         let fk_name: &str = row.get("FK_NAME").unwrap_or("");

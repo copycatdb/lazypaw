@@ -32,10 +32,7 @@ pub async fn ws_handler(
 ) -> Response {
     let claims = if let Some(ref token) = query.token {
         let header = format!("Bearer {}", token);
-        match auth::authenticate(Some(&header), &state.config) {
-            Ok(c) => c,
-            Err(_) => None,
-        }
+        auth::authenticate(Some(&header), &state.config).unwrap_or_default()
     } else {
         None
     };

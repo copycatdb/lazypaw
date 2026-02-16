@@ -48,8 +48,8 @@ pub enum FilterNode {
 /// Parse a PostgREST filter expression string (e.g., "eq.value", "in.(a,b,c)")
 /// into a Filter for the given column.
 pub fn parse_filter(column: &str, expr: &str) -> Result<Filter, Error> {
-    let (negated, rest) = if expr.starts_with("not.") {
-        (true, &expr[4..])
+    let (negated, rest) = if let Some(stripped) = expr.strip_prefix("not.") {
+        (true, stripped)
     } else {
         (false, expr)
     };

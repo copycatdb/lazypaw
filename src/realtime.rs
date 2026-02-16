@@ -496,7 +496,7 @@ fn filter_matches(filter: &Filter, value: &JsonValue) -> bool {
             _ => true,
         },
         FilterOp::In => match &filter.value {
-            FilterValue::List(items) => items.iter().any(|i| *i == val_str),
+            FilterValue::List(items) => items.contains(&val_str),
             _ => true,
         },
         FilterOp::Is => match &filter.value {
