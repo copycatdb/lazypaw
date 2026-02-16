@@ -498,32 +498,24 @@ fn build_filters_from_params(
     query_params: &HashMap<String, String>,
     table: &crate::schema::TableInfo,
 ) -> Result<Vec<FilterNode>, Error> {
-    let reserved = ["select", "order", "limit", "offset", "and", "or"];
+    let reserved = ["select", "order", "limit", "offset"];
 
     let mut filter_nodes: Vec<FilterNode> = Vec::new();
 
     for (key, value) in query_params {
-        if reserved.contains(&key.as_str()) {
-            continue;
-        }
-
-        // Handle "or" and "and" groups
+        // Handle "or" and "and" groups before reserved check
         if key == "or" {
-            let group_filters = filters::parse_logic_group(value)?;
-            let nodes: Vec<FilterNode> = group_filters
-                .into_iter()
-                .map(FilterNode::Condition)
-                .collect();
+            let nodes = filters::parse_logic_group(value)?;
             filter_nodes.push(FilterNode::Or(nodes));
             continue;
         }
         if key == "and" {
-            let group_filters = filters::parse_logic_group(value)?;
-            let nodes: Vec<FilterNode> = group_filters
-                .into_iter()
-                .map(FilterNode::Condition)
-                .collect();
+            let nodes = filters::parse_logic_group(value)?;
             filter_nodes.push(FilterNode::And(nodes));
+            continue;
+        }
+
+        if reserved.contains(&key.as_str()) {
             continue;
         }
 
@@ -934,8 +926,28 @@ async fn handle_embeds(
         let client = conn.client();
 
         let mut query = claw::Query::new(full_sql);
+
+        // Bind numeric PKs as integers, not strings, to match SQL Server column types
+        let target_col_is_numeric = target_table
+            .columns
+            .iter()
+            .find(|c| c.name.eq_ignore_ascii_case(&embed_info.target_column))
+            .map(|c| matches!(c.data_type.to_lowercase().as_str(),
+                "int" | "bigint" | "smallint" | "tinyint" | "numeric" | "decimal" | "float" | "real"))
+            .unwrap_or(false);
+
         for val in &source_values {
-            query.bind(val.as_str());
+            if target_col_is_numeric {
+                if let Ok(n) = val.parse::<i64>() {
+                    query.bind(n);
+                } else if let Ok(n) = val.parse::<f64>() {
+                    query.bind(n);
+                } else {
+                    query.bind(val.as_str());
+                }
+            } else {
+                query.bind(val.as_str());
+            }
         }
 
         let stream = query

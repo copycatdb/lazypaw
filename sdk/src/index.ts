@@ -4,11 +4,18 @@
 
 // ─── Types ───────────────────────────────────────────────────────────
 
+export type AuthEvent = 'SIGNED_IN' | 'SIGNED_OUT' | 'TOKEN_REFRESHED';
+export type AuthChangeCallback = (event: AuthEvent, token: string | null) => void;
+
 export interface LazypawClientOptions {
   /** JWT token for authentication */
   token?: string;
   /** Custom headers */
   headers?: Record<string, string>;
+  /** Async function that returns a fresh JWT token before each request */
+  tokenFn?: () => Promise<string | null>;
+  /** API key sent as `apikey` header (Supabase convention) */
+  apiKey?: string;
 }
 
 export interface QueryResult<T = any> {
@@ -47,6 +54,7 @@ export type ChangeCallback<T = any> = (payload: ChangeEvent<T>) => void;
 class QueryBuilder<T = any> {
   private url: string;
   private defaultHeaders: Record<string, string>;
+  private headersFn?: () => Promise<Record<string, string>>;
   private table: string;
   private selectStr?: string;
   private filters: string[] = [];
@@ -60,10 +68,11 @@ class QueryBuilder<T = any> {
   private isMaybeSingle: boolean = false;
   private wantCount: boolean = false;
 
-  constructor(url: string, headers: Record<string, string>, table: string) {
+  constructor(url: string, headers: Record<string, string>, table: string, headersFn?: () => Promise<Record<string, string>>) {
     this.url = url;
     this.defaultHeaders = headers;
     this.table = table;
+    this.headersFn = headersFn;
   }
 
   /** Select columns and embeds: .select('name, orders(id, amount)') */
@@ -240,8 +249,9 @@ class QueryBuilder<T = any> {
 
   private async execute(): Promise<QueryResult<T>> {
     const url = this.buildUrl();
+    const resolvedHeaders = this.headersFn ? await this.headersFn() : this.defaultHeaders;
     const headers: Record<string, string> = {
-      ...this.defaultHeaders,
+      ...resolvedHeaders,
       'Content-Type': 'application/json',
     };
 
@@ -535,28 +545,85 @@ class RealtimeEngine {
 export class LazypawClient {
   private url: string;
   private headers: Record<string, string>;
+  private token: string | null;
+  private tokenFn?: () => Promise<string | null>;
+  private apiKey?: string;
+  private authListeners: AuthChangeCallback[] = [];
   private realtimeEngine: RealtimeEngine;
 
   constructor(url: string, options?: LazypawClientOptions) {
-    // Remove trailing slash
     this.url = url.replace(/\/$/, '');
     this.headers = { ...options?.headers };
-    if (options?.token) {
-      this.headers['Authorization'] = `Bearer ${options.token}`;
+    this.token = options?.token ?? null;
+    this.tokenFn = options?.tokenFn;
+    this.apiKey = options?.apiKey;
+    if (this.token) {
+      this.headers['Authorization'] = `Bearer ${this.token}`;
     }
-    this.realtimeEngine = new RealtimeEngine(this.url, options?.token);
+    if (this.apiKey) {
+      this.headers['apikey'] = this.apiKey;
+    }
+    this.realtimeEngine = new RealtimeEngine(this.url, this.token ?? undefined);
   }
 
-  /** Start a query on a table: lp.from('users').select('*').eq('active', true) */
+  /** Update the token used for all subsequent requests */
+  setToken(token: string | null): void {
+    const oldToken = this.token;
+    this.token = token;
+    if (token) {
+      this.headers['Authorization'] = `Bearer ${token}`;
+      this._notifyAuth(oldToken ? 'TOKEN_REFRESHED' : 'SIGNED_IN', token);
+    } else {
+      delete this.headers['Authorization'];
+      if (oldToken) this._notifyAuth('SIGNED_OUT', null);
+    }
+  }
+
+  /** Register a callback for auth state changes */
+  onAuthStateChange(callback: AuthChangeCallback): { unsubscribe: () => void } {
+    this.authListeners.push(callback);
+    return {
+      unsubscribe: () => {
+        this.authListeners = this.authListeners.filter((cb) => cb !== callback);
+      },
+    };
+  }
+
+  private _notifyAuth(event: AuthEvent, token: string | null): void {
+    for (const cb of this.authListeners) {
+      try { cb(event, token); } catch {}
+    }
+  }
+
+  private async _resolveHeaders(): Promise<Record<string, string>> {
+    const h = { ...this.headers };
+    if (this.tokenFn) {
+      const freshToken = await this.tokenFn();
+      if (freshToken) {
+        h['Authorization'] = `Bearer ${freshToken}`;
+        if (freshToken !== this.token) {
+          const old = this.token;
+          this.token = freshToken;
+          this._notifyAuth(old ? 'TOKEN_REFRESHED' : 'SIGNED_IN', freshToken);
+        }
+      } else {
+        delete h['Authorization'];
+      }
+    }
+    return h;
+  }
+
+  /** Start a query on a table */
   from<T = any>(table: string): QueryBuilder<T> {
-    return new QueryBuilder<T>(this.url, this.headers, table);
+    return new QueryBuilder<T>(this.url, this.headers, table, () => this._resolveHeaders());
   }
 
   /** Call a stored procedure/function: lp.rpc('get_leaderboard', { game_id: 1 }) */
   async rpc<T = any>(fn: string, args?: Record<string, any>): Promise<QueryResult<T>> {
     const url = `${this.url}/rpc/${fn}`;
+    const resolvedHeaders = await this._resolveHeaders();
     const headers: Record<string, string> = {
-      ...this.headers,
+      ...resolvedHeaders,
       'Content-Type': 'application/json',
     };
 
