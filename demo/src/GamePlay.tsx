@@ -16,7 +16,7 @@ export default function GamePlay({ game, player, isHost, onFinish, onGameUpdate 
   const [selected, setSelected] = useState<string | null>(null)
   const [revealed, setRevealed] = useState(false)
   const [score, setScore] = useState(0)
-  const [answers, setAnswers] = useState<Answer[]>([])
+  const [answerCount, setAnswerCount] = useState(0)
   const [timer, setTimer] = useState(15)
   const [players, setPlayers] = useState<Player[]>([])
 
@@ -32,17 +32,24 @@ export default function GamePlay({ game, player, isHost, onFinish, onGameUpdate 
         const q = data.find(q => q.order_num === questionNum)
         if (q) setCurrentQ(q)
       }
+
+      // Load initial players/scores
+      const { data: ps } = await lp.from<Player>('players')
+        .select('*').eq('game_id', game.id).order('score', { ascending: false })
+      if (ps) setPlayers(ps)
     })()
   }, [game.id])
 
-  // Poll for game updates (non-host watches for question changes)
+  // Realtime: game updates (question changes, game finish)
   useEffect(() => {
-    const interval = setInterval(async () => {
-      const { data } = await lp.from<Game>('games')
-        .select('*').eq('id', game.id).single()
-      if (data) {
-        const g = data as unknown as Game
+    const gameChannel = lp.channel('games')
+      .on('UPDATE', (payload) => {
+        const g = payload.record as unknown as Game
+        if (g.id !== game.id) return
+
         if (g.status === 'finished') { onFinish(g); return }
+
+        onGameUpdate(g)
         if (g.current_question !== questionNum) {
           setQuestionNum(g.current_question)
           const q = questions.find(q => q.order_num === g.current_question)
@@ -51,24 +58,44 @@ export default function GamePlay({ game, player, isHost, onFinish, onGameUpdate 
             setSelected(null)
             setRevealed(false)
             setTimer(15)
-            setAnswers([])
+            setAnswerCount(0)
           }
         }
-        onGameUpdate(g)
-      }
-      // Also fetch current answers for this question
-      if (currentQ) {
-        const { data: ans } = await lp.from<Answer>('answers')
-          .select('*').eq('question_id', currentQ.id)
-        if (ans) setAnswers(ans)
-      }
-      // Fetch player scores
-      const { data: ps } = await lp.from<Player>('players')
-        .select('*').eq('game_id', game.id).order('score', { ascending: false })
-      if (ps) setPlayers(ps)
-    }, 1500)
-    return () => clearInterval(interval)
-  }, [game.id, questionNum, questions, currentQ])
+      })
+      .subscribe()
+
+    return () => gameChannel.unsubscribe()
+  }, [game.id, questionNum, questions])
+
+  // Realtime: answers coming in (live count)
+  useEffect(() => {
+    const answerChannel = lp.channel('answers')
+      .on('INSERT', (payload) => {
+        const ans = payload.record as unknown as Answer
+        if (currentQ && ans.question_id === currentQ.id) {
+          setAnswerCount(prev => prev + 1)
+        }
+      })
+      .subscribe()
+
+    return () => answerChannel.unsubscribe()
+  }, [currentQ?.id])
+
+  // Realtime: player score updates
+  useEffect(() => {
+    const playerChannel = lp.channel('players')
+      .on('UPDATE', (payload) => {
+        const updated = payload.record as unknown as Player
+        if (updated.game_id !== game.id) return
+        setPlayers(prev => {
+          const next = prev.map(p => p.id === updated.id ? updated : p)
+          return next.sort((a, b) => b.score - a.score)
+        })
+      })
+      .subscribe()
+
+    return () => playerChannel.unsubscribe()
+  }, [game.id])
 
   // Countdown timer
   useEffect(() => {
@@ -87,9 +114,8 @@ export default function GamePlay({ game, player, isHost, onFinish, onGameUpdate 
 
     const isCorrect = choice === currentQ.correct
     if (isCorrect) {
-      const points = Math.max(100, 100 + timer * 50) // More points for faster answers
+      const points = Math.max(100, 100 + timer * 50)
       setScore(s => s + points)
-      // Update player score in DB
       await lp.from('players')
         .update({ score: score + points })
         .eq('id', player.id)
@@ -106,7 +132,6 @@ export default function GamePlay({ game, player, isHost, onFinish, onGameUpdate 
   const nextQuestion = async () => {
     const next = questionNum + 1
     if (next > questions.length) {
-      // Game over
       await lp.from('games').update({ status: 'finished', current_question: questionNum }).eq('id', game.id)
       onFinish({ ...game, status: 'finished' })
     } else {
@@ -118,7 +143,7 @@ export default function GamePlay({ game, player, isHost, onFinish, onGameUpdate 
         setSelected(null)
         setRevealed(false)
         setTimer(15)
-        setAnswers([])
+        setAnswerCount(0)
       }
     }
   }
@@ -189,9 +214,9 @@ export default function GamePlay({ game, player, isHost, onFinish, onGameUpdate 
           })}
         </div>
 
-        {/* Answer count */}
+        {/* Live answer count */}
         <div className="text-center text-gray-400 text-sm mb-4">
-          {answers.length} answer{answers.length !== 1 ? 's' : ''} submitted
+          {answerCount} answer{answerCount !== 1 ? 's' : ''} submitted
         </div>
 
         {/* Reveal / Next buttons (host) */}
