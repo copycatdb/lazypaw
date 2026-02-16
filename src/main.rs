@@ -150,7 +150,10 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             "typescript" | "ts" => codegen::generate_typescript(&schema_cache, db_name),
             "python" | "py" => codegen::generate_python(&schema_cache, db_name),
             other => {
-                eprintln!("Unsupported language: {}. Use 'typescript' or 'python'.", other);
+                eprintln!(
+                    "Unsupported language: {}. Use 'typescript' or 'python'.",
+                    other
+                );
                 std::process::exit(1);
             }
         };

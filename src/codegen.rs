@@ -8,9 +8,9 @@ fn ts_type(sql_type: &str) -> &'static str {
         "int" | "smallint" | "tinyint" | "bigint" | "float" | "real" | "decimal" | "numeric"
         | "money" | "smallmoney" => "number",
         "bit" => "boolean",
-        "nvarchar" | "varchar" | "char" | "nchar" | "text" | "ntext" | "datetime"
-        | "datetime2" | "date" | "time" | "smalldatetime" | "datetimeoffset"
-        | "uniqueidentifier" | "varbinary" | "binary" | "image" | "xml" => "string",
+        "nvarchar" | "varchar" | "char" | "nchar" | "text" | "ntext" | "datetime" | "datetime2"
+        | "date" | "time" | "smalldatetime" | "datetimeoffset" | "uniqueidentifier"
+        | "varbinary" | "binary" | "image" | "xml" => "string",
         _ => "unknown",
     }
 }
@@ -20,9 +20,7 @@ fn py_type(sql_type: &str) -> &'static str {
         "int" | "smallint" | "tinyint" | "bigint" => "int",
         "float" | "real" | "decimal" | "numeric" | "money" | "smallmoney" => "float",
         "bit" => "bool",
-        "nvarchar" | "varchar" | "char" | "nchar" | "text" | "ntext" | "uniqueidentifier" => {
-            "str"
-        }
+        "nvarchar" | "varchar" | "char" | "nchar" | "text" | "ntext" | "uniqueidentifier" => "str",
         "datetime" | "datetime2" | "datetimeoffset" => "datetime",
         "date" => "date",
         "time" => "time",
@@ -127,7 +125,9 @@ pub fn generate_python(schema: &SchemaCache, db_name: &str) -> String {
     tables.sort_by(|a, b| a.name.cmp(&b.name));
 
     // Check which types are actually used
-    let needs_any = tables.iter().any(|t| t.columns.iter().any(|c| py_type(&c.data_type) == "Any"));
+    let needs_any = tables
+        .iter()
+        .any(|t| t.columns.iter().any(|c| py_type(&c.data_type) == "Any"));
     let _ = needs_any; // imports are always included for simplicity
 
     for table in &tables {

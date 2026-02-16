@@ -932,8 +932,19 @@ async fn handle_embeds(
             .columns
             .iter()
             .find(|c| c.name.eq_ignore_ascii_case(&embed_info.target_column))
-            .map(|c| matches!(c.data_type.to_lowercase().as_str(),
-                "int" | "bigint" | "smallint" | "tinyint" | "numeric" | "decimal" | "float" | "real"))
+            .map(|c| {
+                matches!(
+                    c.data_type.to_lowercase().as_str(),
+                    "int"
+                        | "bigint"
+                        | "smallint"
+                        | "tinyint"
+                        | "numeric"
+                        | "decimal"
+                        | "float"
+                        | "real"
+                )
+            })
             .unwrap_or(false);
 
         for val in &source_values {
