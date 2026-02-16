@@ -156,6 +156,40 @@ pub enum SubCommand {
         #[arg(long)]
         output: String,
     },
+    /// Initialize a new lazypaw project with config file
+    Init {
+        /// SQL Server hostname
+        #[arg(long)]
+        server: Option<String>,
+
+        /// Database name
+        #[arg(long)]
+        database: Option<String>,
+
+        /// SQL Server username
+        #[arg(long)]
+        user: Option<String>,
+
+        /// SQL Server password
+        #[arg(long)]
+        password: Option<String>,
+
+        /// HTTP listen port
+        #[arg(long, default_value = "3000")]
+        port: u16,
+
+        /// Trust server certificate
+        #[arg(long)]
+        trust_cert: bool,
+
+        /// Generate types in this language (typescript or python)
+        #[arg(long)]
+        lang: Option<String>,
+
+        /// Output config file path
+        #[arg(long, default_value = "./lazypaw.toml")]
+        output: String,
+    },
 }
 
 /// TOML config file structure.
@@ -236,6 +270,12 @@ pub struct AppConfig {
     pub sp_client_secret: Option<String>,
     pub realtime: bool,
     pub realtime_poll_ms: u64,
+    pub log_level: String,
+    pub log_format: String,
+    pub log_slow_queries: Option<u64>,
+    pub otel_enabled: bool,
+    pub otel_endpoint: String,
+    pub otel_service_name: String,
 }
 
 impl AppConfig {
@@ -383,6 +423,12 @@ impl AppConfig {
             sp_client_secret: args.sp_client_secret,
             realtime: args.realtime,
             realtime_poll_ms: args.realtime_poll_ms,
+            log_level: args.log_level,
+            log_format: args.log_format,
+            log_slow_queries: args.log_slow_queries,
+            otel_enabled: args.otel_enabled,
+            otel_endpoint: args.otel_endpoint,
+            otel_service_name: args.otel_service_name,
         }
     }
 }
