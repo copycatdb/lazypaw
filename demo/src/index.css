@@ -1,0 +1,36 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+body {
+  font-family: 'Inter', system-ui, -apple-system, sans-serif;
+}
+
+.option-btn {
+  @apply w-full p-4 rounded-xl text-lg font-semibold transition-all duration-200
+    border-2 border-transparent cursor-pointer;
+}
+
+.option-btn:hover:not(:disabled) {
+  @apply scale-[1.02] shadow-lg;
+}
+
+.option-btn:disabled {
+  @apply cursor-not-allowed opacity-70;
+}
+
+.option-a { @apply bg-red-500/20 hover:bg-red-500/40 text-red-300; }
+.option-a.selected { @apply bg-red-500 text-white border-red-300; }
+.option-a.correct { @apply bg-red-500 text-white ring-4 ring-yellow-400; }
+
+.option-b { @apply bg-blue-500/20 hover:bg-blue-500/40 text-blue-300; }
+.option-b.selected { @apply bg-blue-500 text-white border-blue-300; }
+.option-b.correct { @apply bg-blue-500 text-white ring-4 ring-yellow-400; }
+
+.option-c { @apply bg-green-500/20 hover:bg-green-500/40 text-green-300; }
+.option-c.selected { @apply bg-green-500 text-white border-green-300; }
+.option-c.correct { @apply bg-green-500 text-white ring-4 ring-yellow-400; }
+
+.option-d { @apply bg-purple-500/20 hover:bg-purple-500/40 text-purple-300; }
+.option-d.selected { @apply bg-purple-500 text-white border-purple-300; }
+.option-d.correct { @apply bg-purple-500 text-white ring-4 ring-yellow-400; }

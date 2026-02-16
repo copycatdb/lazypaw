@@ -116,6 +116,9 @@ fn run_setup(roles: &str, service_account: &str) {
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
+    // Install rustls crypto provider
+    let _ = rustls::crypto::ring::default_provider().install_default();
+
     // ── Config ───────────────────────────────────────────────
     let args = Args::parse();
 
