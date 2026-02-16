@@ -1,0 +1,20 @@
+{
+  "name": "lazypaw-js",
+  "version": "0.1.0",
+  "description": "JavaScript/TypeScript client for lazypaw — PostgREST for SQL Server",
+  "main": "dist/index.js",
+  "module": "dist/index.mjs",
+  "types": "dist/index.d.ts",
+  "files": ["dist"],
+  "scripts": {
+    "build": "tsup src/index.ts --format cjs,esm --dts",
+    "dev": "tsup src/index.ts --format cjs,esm --dts --watch"
+  },
+  "keywords": ["sql-server", "rest", "api", "postgrest", "mssql", "supabase", "realtime"],
+  "license": "MIT",
+  "repository": "https://github.com/copycatdb/lazypaw",
+  "devDependencies": {
+    "tsup": "^8.0.0",
+    "typescript": "^5.4.0"
+  }
+}
