@@ -57,6 +57,8 @@ class QueryBuilder<T = any> {
   private body?: any;
   private prefer: string[] = [];
   private isSingle: boolean = false;
+  private isMaybeSingle: boolean = false;
+  private wantCount: boolean = false;
 
   constructor(url: string, headers: Record<string, string>, table: string) {
     this.url = url;
@@ -122,6 +124,18 @@ class QueryBuilder<T = any> {
     return this;
   }
 
+  /** Full-text search: .textSearch('description', 'game') */
+  textSearch(column: string, query: string): this {
+    this.filters.push(`${column}=fts.${query}`);
+    return this;
+  }
+
+  /** Negate a filter: .not('status', 'eq', 'inactive') */
+  not(column: string, operator: string, value: any): this {
+    this.filters.push(`${column}=not.${operator}.${value}`);
+    return this;
+  }
+
   /** Order results: .order('name', { ascending: true }) */
   order(column: string, opts?: { ascending?: boolean }): this {
     const dir = opts?.ascending === false ? 'desc' : 'asc';
@@ -141,10 +155,30 @@ class QueryBuilder<T = any> {
     return this;
   }
 
-  /** Return a single row (first match) */
+  /** Pagination range (inclusive): .range(0, 9) gets first 10 rows */
+  range(from: number, to: number): this {
+    this.offsetVal = from;
+    this.limitVal = to - from + 1;
+    return this;
+  }
+
+  /** Return a single row (first match). Sends Accept header for single object. */
   single(): this {
     this.isSingle = true;
     this.limitVal = 1;
+    return this;
+  }
+
+  /** Like single() but returns null instead of error when 0 rows */
+  maybeSingle(): this {
+    this.isMaybeSingle = true;
+    this.limitVal = 1;
+    return this;
+  }
+
+  /** Request exact count via Content-Range header */
+  count(): this {
+    this.wantCount = true;
     return this;
   }
 
@@ -155,6 +189,15 @@ class QueryBuilder<T = any> {
     this.method = 'POST';
     this.body = data;
     this.prefer.push('return=representation');
+    return this;
+  }
+
+  /** Upsert row(s) — insert with merge on conflict */
+  upsert(data: Partial<T> | Partial<T>[]): this {
+    this.method = 'POST';
+    this.body = data;
+    this.prefer.push('return=representation');
+    this.prefer.push('resolution=merge-duplicates');
     return this;
   }
 
@@ -201,8 +244,19 @@ class QueryBuilder<T = any> {
       ...this.defaultHeaders,
       'Content-Type': 'application/json',
     };
-    if (this.prefer.length) {
-      headers['Prefer'] = this.prefer.join(', ');
+
+    // Prefer headers
+    const preferParts = [...this.prefer];
+    if (this.wantCount) {
+      preferParts.push('count=exact');
+    }
+    if (preferParts.length) {
+      headers['Prefer'] = preferParts.join(', ');
+    }
+
+    // Accept header for single object
+    if (this.isSingle) {
+      headers['Accept'] = 'application/vnd.pgrst.object+json';
     }
 
     try {
@@ -225,14 +279,48 @@ class QueryBuilder<T = any> {
         };
       }
 
+      // Parse count from Content-Range header if requested
+      let count: number | undefined;
+      if (this.wantCount) {
+        const contentRange = res.headers.get('Content-Range');
+        if (contentRange) {
+          // Format: "0-9/100" or "*/100"
+          const match = contentRange.match(/\/(\d+)/);
+          if (match) {
+            count = parseInt(match[1], 10);
+          }
+        }
+      }
+
       const text = await res.text();
-      if (!text) return { data: this.isSingle ? null : ([] as any), error: null };
+      if (!text) {
+        const emptyData = (this.isSingle || this.isMaybeSingle) ? null : ([] as any);
+        const result: QueryResult<T> = { data: emptyData, error: null };
+        if (this.wantCount) result.count = count;
+        return result;
+      }
 
       const data = JSON.parse(text);
+
       if (this.isSingle) {
-        return { data: Array.isArray(data) ? data[0] ?? null : data, error: null } as any;
+        // With Accept: application/vnd.pgrst.object+json, server returns object directly
+        // Fallback: if it's still an array, unwrap it
+        const row = Array.isArray(data) ? data[0] ?? null : data;
+        const result: QueryResult<T> = { data: row, error: null } as any;
+        if (this.wantCount) result.count = count;
+        return result;
       }
-      return { data, error: null };
+
+      if (this.isMaybeSingle) {
+        const row = Array.isArray(data) ? data[0] ?? null : data;
+        const result: QueryResult<T> = { data: row, error: null } as any;
+        if (this.wantCount) result.count = count;
+        return result;
+      }
+
+      const result: QueryResult<T> = { data, error: null };
+      if (this.wantCount) result.count = count;
+      return result;
     } catch (e: any) {
       return { data: null, error: { message: e.message || 'Network error' } };
     }
@@ -256,12 +344,27 @@ class RealtimeChannel {
     this.table = table;
   }
 
-  /** Listen for a specific event type with optional filter */
+  /**
+   * Listen for changes. Supports two signatures:
+   *
+   * Simple: .on('INSERT', callback)
+   * Supabase-style: .on('postgres_changes', { event: 'INSERT', table: 'games', filter: 'id=eq.1' }, callback)
+   */
   on(
-    event: 'INSERT' | 'UPDATE' | 'DELETE' | '*',
+    eventOrType: 'INSERT' | 'UPDATE' | 'DELETE' | '*' | 'postgres_changes',
     filterOrCb: string | Record<string, string> | ChangeCallback,
     maybeCb?: ChangeCallback,
   ): this {
+    // Supabase-style: .on('postgres_changes', { event, table?, filter? }, callback)
+    if (eventOrType === 'postgres_changes' && typeof filterOrCb === 'object' && typeof filterOrCb !== 'function') {
+      const opts = filterOrCb as Record<string, string>;
+      const event = (opts.event || '*') as string;
+      const filter = opts.filter;
+      // opts.table is informational (channel already scoped to a table)
+      this.listeners.push({ event, filter, callback: maybeCb! });
+      return this;
+    }
+
     let filter: string | undefined;
     let callback: ChangeCallback;
 
@@ -277,7 +380,7 @@ class RealtimeChannel {
       callback = maybeCb!;
     }
 
-    this.listeners.push({ event, filter, callback });
+    this.listeners.push({ event: eventOrType, filter, callback });
     return this;
   }
 
@@ -350,7 +453,7 @@ class RealtimeEngine {
       this.pending = [];
     };
 
-    this.ws.onmessage = (evt) => {
+    this.ws.onmessage = (evt: MessageEvent) => {
       try {
         const msg = JSON.parse(evt.data);
         if (msg.type === 'change' || msg.type === 'INSERT' || msg.type === 'UPDATE' || msg.type === 'DELETE') {
@@ -447,6 +550,44 @@ export class LazypawClient {
   /** Start a query on a table: lp.from('users').select('*').eq('active', true) */
   from<T = any>(table: string): QueryBuilder<T> {
     return new QueryBuilder<T>(this.url, this.headers, table);
+  }
+
+  /** Call a stored procedure/function: lp.rpc('get_leaderboard', { game_id: 1 }) */
+  async rpc<T = any>(fn: string, args?: Record<string, any>): Promise<QueryResult<T>> {
+    const url = `${this.url}/rpc/${fn}`;
+    const headers: Record<string, string> = {
+      ...this.headers,
+      'Content-Type': 'application/json',
+    };
+
+    try {
+      const res = await fetch(url, {
+        method: 'POST',
+        headers,
+        body: args ? JSON.stringify(args) : undefined,
+      });
+
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({ message: res.statusText }));
+        return {
+          data: null,
+          error: {
+            message: err.message || res.statusText,
+            code: err.code,
+            details: err.details,
+            hint: err.hint,
+          },
+        };
+      }
+
+      const text = await res.text();
+      if (!text) return { data: null, error: null };
+
+      const data = JSON.parse(text);
+      return { data, error: null };
+    } catch (e: any) {
+      return { data: null, error: { message: e.message || 'Network error' } };
+    }
   }
 
   /** Create a realtime channel for a table */
