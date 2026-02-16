@@ -12,34 +12,46 @@ interface Props {
 export default function Lobby({ game, player, isHost, onStart, onGameUpdate }: Props) {
   const [players, setPlayers] = useState<Player[]>([player])
 
-  // Poll for new players
+  // Initial load + realtime subscriptions
   useEffect(() => {
-    const interval = setInterval(async () => {
+    // Load existing players
+    ;(async () => {
       const { data } = await lp.from<Player>('players')
         .select('*')
         .eq('game_id', game.id)
         .order('joined_at', { ascending: true })
       if (data) setPlayers(data)
-    }, 2000)
-    return () => clearInterval(interval)
-  }, [game.id])
+    })()
 
-  // Poll for game status change (for non-hosts)
-  useEffect(() => {
-    if (isHost) return
-    const interval = setInterval(async () => {
-      const { data } = await lp.from<Game>('games')
-        .select('*')
-        .eq('id', game.id)
-        .single()
-      if (data) {
-        const g = data as unknown as Game
-        onGameUpdate(g)
-        if (g.status === 'playing') onStart(g)
-      }
-    }, 1500)
-    return () => clearInterval(interval)
-  }, [game.id, isHost])
+    // Subscribe to new players joining
+    const playerChannel = lp.channel('players')
+      .on('INSERT', (payload) => {
+        const newPlayer = payload.record as Player
+        if (newPlayer.game_id === game.id) {
+          setPlayers(prev => {
+            if (prev.find(p => p.id === newPlayer.id)) return prev
+            return [...prev, newPlayer]
+          })
+        }
+      })
+      .subscribe()
+
+    // Subscribe to game status changes (for non-hosts to detect start)
+    const gameChannel = lp.channel('games')
+      .on('UPDATE', (payload) => {
+        const g = payload.record as unknown as Game
+        if (g.id === game.id) {
+          onGameUpdate(g)
+          if (g.status === 'playing') onStart(g)
+        }
+      })
+      .subscribe()
+
+    return () => {
+      playerChannel.unsubscribe()
+      gameChannel.unsubscribe()
+    }
+  }, [game.id])
 
   const startGame = async () => {
     const { data } = await lp.from<Game>('games')
