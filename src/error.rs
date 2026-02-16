@@ -80,13 +80,19 @@ impl Error {
     }
 
     pub fn to_api_error(&self) -> ApiError {
+        let sanitized_message = match self.status_code() {
+            StatusCode::BAD_REQUEST => "Bad request",
+            StatusCode::UNAUTHORIZED => "Unauthorized",
+            StatusCode::FORBIDDEN => "Forbidden",
+            StatusCode::NOT_FOUND => "Not found",
+            StatusCode::NOT_ACCEPTABLE => "Not acceptable",
+            StatusCode::CONFLICT => "Conflict",
+            _ => "Internal server error",
+        };
         ApiError {
             code: self.code().to_string(),
-            message: self.to_string(),
-            details: match self {
-                Error::Sql(msg) => Some(msg.clone()),
-                _ => None,
-            },
+            message: sanitized_message.to_string(),
+            details: None,
             hint: None,
         }
     }
@@ -95,6 +101,8 @@ impl Error {
 impl IntoResponse for Error {
     fn into_response(self) -> Response {
         let status = self.status_code();
+        // Log the full error details server-side
+        tracing::error!("HTTP {} — {}", status.as_u16(), self);
         let body = serde_json::to_string(&self.to_api_error()).unwrap_or_default();
         (
             status,
