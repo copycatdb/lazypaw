@@ -1,0 +1,20 @@
+#!/bin/sh
+# lazypaw pre-commit hook: format + lint check
+
+set -e
+
+echo "🐾 Running cargo fmt..."
+cargo fmt -- --check 2>/dev/null
+if [ $? -ne 0 ]; then
+    echo "❌ cargo fmt failed. Run 'cargo fmt' and try again."
+    exit 1
+fi
+
+echo "🐾 Running cargo clippy..."
+cargo clippy --release -- -D warnings 2>/dev/null
+if [ $? -ne 0 ]; then
+    echo "❌ cargo clippy failed. Fix warnings and try again."
+    exit 1
+fi
+
+echo "✅ Pre-commit checks passed."
