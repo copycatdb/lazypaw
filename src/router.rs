@@ -125,6 +125,13 @@ async fn handle_table_delete(
 
 /// Parse a wildcard path into a Vec<(String, String)> for the handlers.
 fn parse_wildcard_path(path: &str) -> Vec<(String, String)> {
-    // We encode the full path as a single entry for resolve_table_path to parse
-    vec![("path".to_string(), path.to_string())]
+    let parts: Vec<&str> = path.split('/').filter(|s| !s.is_empty()).collect();
+    match parts.len() {
+        0 => vec![],
+        1 => vec![("table".to_string(), parts[0].to_string())],
+        _ => vec![
+            ("schema".to_string(), parts[0].to_string()),
+            ("table".to_string(), parts[1].to_string()),
+        ],
+    }
 }
