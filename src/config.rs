@@ -108,6 +108,30 @@ pub struct Args {
     /// Realtime poll interval in milliseconds
     #[arg(long, env = "LAZYPAW_REALTIME_POLL_MS", default_value = "200")]
     pub realtime_poll_ms: u64,
+
+    /// Log level (error, warn, info, debug, trace)
+    #[arg(long, env = "LAZYPAW_LOG_LEVEL", default_value = "info")]
+    pub log_level: String,
+
+    /// Log format (pretty, json)
+    #[arg(long, env = "LAZYPAW_LOG_FORMAT", default_value = "pretty")]
+    pub log_format: String,
+
+    /// Log slow queries exceeding this threshold (ms)
+    #[arg(long, env = "LAZYPAW_LOG_SLOW_QUERIES")]
+    pub log_slow_queries: Option<u64>,
+
+    /// Enable OpenTelemetry export
+    #[arg(long, env = "LAZYPAW_OTEL_ENABLED", default_value = "false")]
+    pub otel_enabled: bool,
+
+    /// OpenTelemetry OTLP endpoint
+    #[arg(long, env = "LAZYPAW_OTEL_ENDPOINT", default_value = "http://localhost:4317")]
+    pub otel_endpoint: String,
+
+    /// OpenTelemetry service name
+    #[arg(long, env = "LAZYPAW_OTEL_SERVICE_NAME", default_value = "lazypaw")]
+    pub otel_service_name: String,
 }
 
 #[derive(Parser, Debug, Clone)]
