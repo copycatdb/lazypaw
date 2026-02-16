@@ -1,0 +1,9 @@
+{
+  "name": "@lazypaw/linux-arm64",
+  "version": "0.1.0",
+  "description": "lazypaw binary for linux arm64",
+  "os": ["linux"],
+  "cpu": ["arm64"],
+  "license": "MIT",
+  "preferUnplugged": true
+}

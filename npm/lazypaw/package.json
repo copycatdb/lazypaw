@@ -1,0 +1,18 @@
+{
+  "name": "lazypaw",
+  "version": "0.1.0",
+  "description": "Instant REST API for SQL Server. No code. No ORM. No backend.",
+  "keywords": ["sql-server", "rest-api", "postgrest", "supabase", "database", "crud"],
+  "homepage": "https://github.com/copycatdb/lazypaw",
+  "repository": { "type": "git", "url": "https://github.com/copycatdb/lazypaw.git" },
+  "license": "MIT",
+  "bin": { "lazypaw": "bin/lazypaw" },
+  "optionalDependencies": {
+    "@lazypaw/linux-x64": "0.1.0",
+    "@lazypaw/linux-arm64": "0.1.0",
+    "@lazypaw/darwin-x64": "0.1.0",
+    "@lazypaw/darwin-arm64": "0.1.0",
+    "@lazypaw/win32-x64": "0.1.0",
+    "@lazypaw/win32-arm64": "0.1.0"
+  }
+}
