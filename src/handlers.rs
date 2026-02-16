@@ -452,24 +452,14 @@ fn resolve_table_path(
     path_params: &[(String, String)],
     config: &AppConfig,
 ) -> Result<(String, String), Error> {
-    // Path can be /<schema>/<table> or /<table> (uses default schema)
     match path_params.len() {
         1 => {
-            // Single segment: just table name, use default schema
-            let key = &path_params[0].0;
-            let val = &path_params[0].1;
-            // axum wildcard gives us one entry
-            let full = if !val.is_empty() {
-                format!("{}/{}", key, val)
-            } else {
-                key.clone()
-            };
-            let parts: Vec<&str> = full.split('/').filter(|s| !s.is_empty()).collect();
-            match parts.len() {
-                1 => Ok((config.default_schema.clone(), parts[0].to_string())),
-                2 => Ok((parts[0].to_string(), parts[1].to_string())),
-                _ => Err(Error::BadRequest(format!("Invalid path: {}", full))),
-            }
+            // Single segment: /<table> → use default schema
+            Ok((config.default_schema.clone(), path_params[0].1.clone()))
+        }
+        2 => {
+            // Two segments: /<schema>/<table>
+            Ok((path_params[0].1.clone(), path_params[1].1.clone()))
         }
         _ => Err(Error::BadRequest("Invalid path".to_string())),
     }
