@@ -10,8 +10,10 @@ pub fn generate_openapi(schema: &SchemaCache, config: &AppConfig) -> Value {
     let mut paths = Map::new();
     let mut schemas = Map::new();
 
+    let multi_schema = schema.has_multiple_schemas();
+
     for ((schema_name, _table_name), table) in &schema.tables {
-        let path = if schema_name.eq_ignore_ascii_case(&config.default_schema) {
+        let path = if !multi_schema || schema_name.eq_ignore_ascii_case(&config.default_schema) {
             format!("/{}", table.name)
         } else {
             format!("/{}/{}", schema_name, table.name)

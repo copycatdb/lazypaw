@@ -155,6 +155,14 @@ impl SchemaCache {
 
         None
     }
+    /// Check if all tables belong to a single schema.
+    pub fn has_multiple_schemas(&self) -> bool {
+        let mut schemas = std::collections::HashSet::new();
+        for (schema, _) in self.tables.keys() {
+            schemas.insert(schema.to_lowercase());
+        }
+        schemas.len() > 1
+    }
 }
 
 /// Info about how to embed a related table.

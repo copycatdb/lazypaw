@@ -89,7 +89,7 @@ pub fn sql_value_to_json(val: &SqlValue<'_>) -> JsonValue {
             let time = chrono::NaiveTime::from_num_seconds_from_midnight_opt(secs, nanos)
                 .unwrap_or_default();
             let ndt = chrono::NaiveDateTime::new(date, time);
-            JsonValue::String(ndt.format("%Y-%m-%dT%H:%M:%S%.3f").to_string())
+            JsonValue::String(format!("{}Z", ndt.format("%Y-%m-%dT%H:%M:%S%.3f")))
         }
         SqlValue::DateTime(None) => JsonValue::Null,
         SqlValue::SmallDateTime(Some(dt)) => {
@@ -127,7 +127,7 @@ pub fn sql_value_to_json(val: &SqlValue<'_>) -> JsonValue {
             let time = chrono::NaiveTime::from_num_seconds_from_midnight_opt(secs, remaining)
                 .unwrap_or_default();
             let ndt = chrono::NaiveDateTime::new(date, time);
-            JsonValue::String(ndt.format("%Y-%m-%dT%H:%M:%S%.f").to_string())
+            JsonValue::String(format!("{}Z", ndt.format("%Y-%m-%dT%H:%M:%S%.3f")))
         }
         SqlValue::DateTime2(None) => JsonValue::Null,
         SqlValue::DateTimeOffset(Some(dto)) => {
@@ -142,17 +142,21 @@ pub fn sql_value_to_json(val: &SqlValue<'_>) -> JsonValue {
                 .unwrap_or_default();
             let ndt = chrono::NaiveDateTime::new(date, time);
             let offset_mins = dto.offset();
-            let sign = if offset_mins >= 0 { "+" } else { "-" };
-            let abs_mins = offset_mins.unsigned_abs();
-            let oh = abs_mins / 60;
-            let om = abs_mins % 60;
-            JsonValue::String(format!(
-                "{}{}{}:{:02}",
-                ndt.format("%Y-%m-%dT%H:%M:%S%.f"),
-                sign,
-                oh,
-                om
-            ))
+            if offset_mins == 0 {
+                JsonValue::String(format!("{}Z", ndt.format("%Y-%m-%dT%H:%M:%S%.3f")))
+            } else {
+                let sign = if offset_mins >= 0 { "+" } else { "-" };
+                let abs_mins = offset_mins.unsigned_abs();
+                let oh = abs_mins / 60;
+                let om = abs_mins % 60;
+                JsonValue::String(format!(
+                    "{}{}{:02}:{:02}",
+                    ndt.format("%Y-%m-%dT%H:%M:%S%.3f"),
+                    sign,
+                    oh,
+                    om
+                ))
+            }
         }
         SqlValue::DateTimeOffset(None) => JsonValue::Null,
     }
