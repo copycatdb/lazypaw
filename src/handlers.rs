@@ -68,10 +68,33 @@ pub async fn handle_get(
     // Build filters from query params
     let filter_nodes = build_filters_from_params(&query_params, table)?;
 
+    // Ensure embed join columns are included in the select
+    let embeds_preview = select::select_embeds(&select_nodes);
+    let mut extra_join_cols: Vec<String> = Vec::new();
+    for embed in &embeds_preview {
+        if let Some(embed_info) = schema_cache.find_embed(&schema_name, &table_name, &embed.name, embed.fk_hint.as_deref()) {
+            extra_join_cols.push(embed_info.source_column.clone());
+        }
+    }
+
+    // Augment select nodes with join columns if they're not already selected
+    let augmented_select = if !extra_join_cols.is_empty() {
+        let selected_cols = select::select_columns(&select_nodes);
+        let mut augmented = select_nodes.clone();
+        for col in &extra_join_cols {
+            if !selected_cols.iter().any(|c| c.eq_ignore_ascii_case(col)) && !selected_cols.contains(&"*") {
+                augmented.push(select::SelectNode::Column(col.clone()));
+            }
+        }
+        augmented
+    } else {
+        select_nodes.clone()
+    };
+
     // Build and execute main query
     let built = query::build_select(
         table,
-        &select_nodes,
+        &augmented_select,
         &filter_nodes,
         &order,
         final_limit,
@@ -148,6 +171,8 @@ pub async fn handle_get(
                     &mut rows,
                     &query_params,
                     &claims,
+                    &extra_join_cols,
+                    &select_nodes,
                 )
                 .await?;
             }
@@ -826,6 +851,8 @@ async fn handle_embeds(
     rows: &mut Vec<serde_json::Map<String, JsonValue>>,
     _query_params: &HashMap<String, String>,
     claims: &Option<auth::Claims>,
+    extra_join_cols: &[String],
+    original_select_nodes: &[SelectNode],
 ) -> Result<(), Error> {
     for embed in embeds {
         let embed_info = schema_cache
@@ -868,8 +895,14 @@ async fn handle_embeds(
             continue;
         }
 
-        // Build embed column list
-        let embed_columns = build_embed_column_list(target_table, &embed.columns);
+        // Build embed column list — always include the join column
+        let mut embed_col_nodes = embed.columns.clone();
+        let embed_selected = select::select_columns(&embed_col_nodes);
+        if !embed_selected.is_empty() && !select::has_star(&embed_col_nodes) 
+            && !embed_selected.iter().any(|c| c.eq_ignore_ascii_case(&embed_info.target_column)) {
+            embed_col_nodes.push(SelectNode::Column(embed_info.target_column.clone()));
+        }
+        let embed_columns = build_embed_column_list(target_table, &embed_col_nodes);
 
         // Build IN clause for batch fetch
         let placeholders: Vec<String> = source_values
@@ -917,6 +950,7 @@ async fn handle_embeds(
         let embed_json: Vec<serde_json::Map<String, JsonValue>> =
             embed_rows.iter().map(types::row_to_json).collect();
 
+
         // Group embed results by the join column
         let mut grouped: HashMap<String, Vec<JsonValue>> = HashMap::new();
         for erow in &embed_json {
@@ -960,6 +994,40 @@ async fn handle_embeds(
                 }
                 crate::schema::EmbedJoinType::OneToMany => {
                     row.insert(embed.name.clone(), JsonValue::Array(embedded));
+                }
+            }
+        }
+
+        // Strip injected join column from embed results if not originally requested
+        let originally_selected: Vec<String> = select::select_columns(&embed.columns)
+            .iter().map(|s| s.to_string()).collect();
+        let has_star_select = embed.columns.is_empty() || select::has_star(&embed.columns);
+        if !has_star_select && !originally_selected.iter().any(|c| c.eq_ignore_ascii_case(&embed_info.target_column)) {
+            for row in rows.iter_mut() {
+                if let Some(JsonValue::Array(arr)) = row.get_mut(&embed.name) {
+                    for item in arr.iter_mut() {
+                        if let JsonValue::Object(obj) = item {
+                            obj.remove(&embed_info.target_column);
+                        }
+                    }
+                } else if let Some(JsonValue::Object(obj)) = row.get_mut(&embed.name) {
+                    obj.remove(&embed_info.target_column);
+                }
+            }
+        }
+    }
+
+    // Strip injected parent join columns
+    if !extra_join_cols.is_empty() {
+        let original_selected: Vec<String> = select::select_columns(original_select_nodes)
+            .iter().map(|s| s.to_string()).collect();
+        let parent_has_star = original_select_nodes.is_empty() || select::has_star(original_select_nodes);
+        if !parent_has_star {
+            for col in extra_join_cols {
+                if !original_selected.iter().any(|c| c.eq_ignore_ascii_case(col)) {
+                    for row in rows.iter_mut() {
+                        row.remove(col.as_str());
+                    }
                 }
             }
         }
