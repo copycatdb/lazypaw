@@ -100,6 +100,14 @@ pub struct Args {
     /// Subcommand
     #[command(subcommand)]
     pub subcmd: Option<SubCommand>,
+
+    /// Enable realtime WebSocket endpoint
+    #[arg(long, env = "LAZYPAW_REALTIME", default_value = "false")]
+    pub realtime: bool,
+
+    /// Realtime poll interval in milliseconds
+    #[arg(long, env = "LAZYPAW_REALTIME_POLL_MS", default_value = "200")]
+    pub realtime_poll_ms: u64,
 }
 
 #[derive(Parser, Debug, Clone)]
@@ -192,6 +200,8 @@ pub struct AppConfig {
     pub sp_tenant_id: Option<String>,
     pub sp_client_id: Option<String>,
     pub sp_client_secret: Option<String>,
+    pub realtime: bool,
+    pub realtime_poll_ms: u64,
 }
 
 impl AppConfig {
@@ -327,6 +337,8 @@ impl AppConfig {
             sp_tenant_id: args.sp_tenant_id,
             sp_client_id: args.sp_client_id,
             sp_client_secret: args.sp_client_secret,
+            realtime: args.realtime,
+            realtime_poll_ms: args.realtime_poll_ms,
         }
     }
 }
