@@ -1,7 +1,7 @@
 //! SQL Server type → JSON/Arrow type mapping.
 
-use serde_json::Value as JsonValue;
 use claw::SqlValue;
+use serde_json::Value as JsonValue;
 
 /// Map a SQL Server INFORMATION_SCHEMA DATA_TYPE string to an OpenAPI type.
 pub fn sql_type_to_openapi(data_type: &str) -> (&'static str, &'static str) {
@@ -35,21 +35,15 @@ pub fn sql_value_to_json(val: &SqlValue<'_>) -> JsonValue {
         SqlValue::I16(None) => JsonValue::Null,
         SqlValue::I32(Some(v)) => JsonValue::Number((*v as i64).into()),
         SqlValue::I32(None) => JsonValue::Null,
-        SqlValue::I64(Some(v)) => {
-            JsonValue::Number(serde_json::Number::from(*v))
-        }
+        SqlValue::I64(Some(v)) => JsonValue::Number(serde_json::Number::from(*v)),
         SqlValue::I64(None) => JsonValue::Null,
-        SqlValue::F32(Some(v)) => {
-            serde_json::Number::from_f64(*v as f64)
-                .map(JsonValue::Number)
-                .unwrap_or(JsonValue::Null)
-        }
+        SqlValue::F32(Some(v)) => serde_json::Number::from_f64(*v as f64)
+            .map(JsonValue::Number)
+            .unwrap_or(JsonValue::Null),
         SqlValue::F32(None) => JsonValue::Null,
-        SqlValue::F64(Some(v)) => {
-            serde_json::Number::from_f64(*v)
-                .map(JsonValue::Number)
-                .unwrap_or(JsonValue::Null)
-        }
+        SqlValue::F64(Some(v)) => serde_json::Number::from_f64(*v)
+            .map(JsonValue::Number)
+            .unwrap_or(JsonValue::Null),
         SqlValue::F64(None) => JsonValue::Null,
         SqlValue::Bit(Some(v)) => JsonValue::Bool(*v),
         SqlValue::Bit(None) => JsonValue::Null,

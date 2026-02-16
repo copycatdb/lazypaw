@@ -61,13 +61,7 @@ async fn handle_table_get(
     query: axum::extract::Query<std::collections::HashMap<String, String>>,
 ) -> Result<Response, crate::error::Error> {
     let path_params = parse_wildcard_path(&path);
-    handlers::handle_get(
-        state,
-        axum::extract::Path(path_params),
-        headers,
-        query,
-    )
-    .await
+    handlers::handle_get(state, axum::extract::Path(path_params), headers, query).await
 }
 
 /// Table POST handler.
@@ -78,13 +72,7 @@ async fn handle_table_post(
     body: axum::body::Bytes,
 ) -> Result<Response, crate::error::Error> {
     let path_params = parse_wildcard_path(&path);
-    handlers::handle_post(
-        state,
-        axum::extract::Path(path_params),
-        headers,
-        body,
-    )
-    .await
+    handlers::handle_post(state, axum::extract::Path(path_params), headers, body).await
 }
 
 /// Table PATCH handler.
@@ -114,13 +102,7 @@ async fn handle_table_delete(
     query: axum::extract::Query<std::collections::HashMap<String, String>>,
 ) -> Result<Response, crate::error::Error> {
     let path_params = parse_wildcard_path(&path);
-    handlers::handle_delete(
-        state,
-        axum::extract::Path(path_params),
-        headers,
-        query,
-    )
-    .await
+    handlers::handle_delete(state, axum::extract::Path(path_params), headers, query).await
 }
 
 /// Parse a wildcard path into a Vec<(String, String)> for the handlers.

@@ -408,7 +408,11 @@ fn build_column_list(table: &TableInfo, nodes: &[SelectNode]) -> String {
             .map(|c| format!("[{}]", escape_ident(&c.name)))
             .collect();
         for col in explicit_cols {
-            if !table.columns.iter().any(|c| c.name.eq_ignore_ascii_case(col)) {
+            if !table
+                .columns
+                .iter()
+                .any(|c| c.name.eq_ignore_ascii_case(col))
+            {
                 cols.push(format!("[{}]", escape_ident(col)));
             }
         }
@@ -427,10 +431,7 @@ fn build_column_list(table: &TableInfo, nodes: &[SelectNode]) -> String {
 }
 
 /// Build WHERE clause from filter nodes.
-fn build_where_clause(
-    filters: &[FilterNode],
-    params: &mut Vec<String>,
-) -> Result<String, Error> {
+fn build_where_clause(filters: &[FilterNode], params: &mut Vec<String>) -> Result<String, Error> {
     build_where_clause_with_offset(filters, params, 0)
 }
 
@@ -593,10 +594,7 @@ fn build_single_filter(
         FilterOp::Fts => {
             params.push(filter_value_single(&filter.value)?);
             let idx = params.len() + offset;
-            Ok(format!(
-                "{}CONTAINS({}, @P{})",
-                not_prefix, col, idx
-            ))
+            Ok(format!("{}CONTAINS({}, @P{})", not_prefix, col, idx))
         }
     }
 }

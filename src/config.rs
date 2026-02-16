@@ -1,3 +1,4 @@
+#![allow(dead_code)]
 //! Configuration: CLI args (clap), environment variables, and TOML config file.
 
 use clap::Parser;

@@ -88,8 +88,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         let sighup_schema = schema.clone();
         tokio::spawn(async move {
             use tokio::signal::unix::{signal, SignalKind};
-            let mut hup =
-                signal(SignalKind::hangup()).expect("failed to register SIGHUP handler");
+            let mut hup = signal(SignalKind::hangup()).expect("failed to register SIGHUP handler");
             loop {
                 hup.recv().await;
                 tracing::info!("SIGHUP received — reloading schema...");
@@ -111,10 +110,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let listen_addr = format!("0.0.0.0:{}", config.listen_port);
     let listener = tokio::net::TcpListener::bind(&listen_addr).await?;
     tracing::info!("Listening on http://{}", listen_addr);
-    tracing::info!(
-        "OpenAPI spec → http://localhost:{}/",
-        config.listen_port
-    );
+    tracing::info!("OpenAPI spec → http://localhost:{}/", config.listen_port);
     tracing::info!(
         "Swagger UI   → http://localhost:{}/swagger",
         config.listen_port
