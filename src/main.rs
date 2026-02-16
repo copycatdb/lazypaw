@@ -29,6 +29,10 @@ use pool::Pool;
 use std::sync::Arc;
 use tokio::sync::RwLock;
 use tracing_subscriber::EnvFilter;
+use tracing_subscriber::prelude::*;
+
+#[cfg(feature = "otel")]
+mod telemetry;
 
 fn run_setup(roles: &str, service_account: &str) {
     let roles: Vec<&str> = roles.split(',').map(|s| s.trim()).collect();

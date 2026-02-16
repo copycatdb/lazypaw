@@ -126,7 +126,11 @@ pub struct Args {
     pub otel_enabled: bool,
 
     /// OpenTelemetry OTLP endpoint
-    #[arg(long, env = "LAZYPAW_OTEL_ENDPOINT", default_value = "http://localhost:4317")]
+    #[arg(
+        long,
+        env = "LAZYPAW_OTEL_ENDPOINT",
+        default_value = "http://localhost:4317"
+    )]
     pub otel_endpoint: String,
 
     /// OpenTelemetry service name

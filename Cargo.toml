@@ -9,6 +9,10 @@ readme = "README.md"
 keywords = ["sql-server", "rest", "api", "postgrest", "mssql"]
 categories = ["database", "web-programming::http-server"]
 
+[features]
+default = []
+otel = ["opentelemetry", "opentelemetry-otlp", "opentelemetry_sdk", "tracing-opentelemetry"]
+
 [[bin]]
 name = "lazypaw"
 path = "src/main.rs"
@@ -33,7 +37,11 @@ jsonwebtoken = "9"
 clap = { version = "4", features = ["derive", "env"] }
 toml = "0.8"
 tracing = "0.1"
-tracing-subscriber = { version = "0.3", features = ["env-filter"] }
+tracing-subscriber = { version = "0.3", features = ["env-filter", "fmt", "json"] }
+opentelemetry = { version = "0.27", optional = true }
+opentelemetry_sdk = { version = "0.27", features = ["rt-tokio"], optional = true }
+opentelemetry-otlp = { version = "0.27", features = ["tonic"], optional = true }
+tracing-opentelemetry = { version = "0.28", optional = true }
 csv = "1"
 uuid = { version = "1", features = ["v4"] }
 chrono = { version = "0.4", default-features = false, features = ["serde", "clock"] }

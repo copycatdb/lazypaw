@@ -1,8 +1,8 @@
 //! `lazypaw init` — interactive project initialization.
 
+use crate::config::AppConfig;
 use crate::pool::Pool;
 use crate::schema;
-use crate::config::AppConfig;
 use std::io::{self, Write};
 
 pub struct InitArgs {
@@ -90,16 +90,19 @@ pub async fn run_init(args: InitArgs) -> Result<(), Box<dyn std::error::Error>> 
 
     // Test connectivity
     {
-        let mut conn = pool.get().await.map_err(|e| {
-            format!(" ✗\nConnection failed: {}", e)
-        })?;
+        let mut conn = pool
+            .get()
+            .await
+            .map_err(|e| format!(" ✗\nConnection failed: {}", e))?;
         let client = conn.client();
-        let stream = client.execute("SELECT 1 AS ok", &[]).await.map_err(|e| {
-            format!(" ✗\nConnection failed: {}", e)
-        })?;
-        let _ = stream.into_first_result().await.map_err(|e| {
-            format!(" ✗\nConnection failed: {}", e)
-        })?;
+        let stream = client
+            .execute("SELECT 1 AS ok", &[])
+            .await
+            .map_err(|e| format!(" ✗\nConnection failed: {}", e))?;
+        let _ = stream
+            .into_first_result()
+            .await
+            .map_err(|e| format!(" ✗\nConnection failed: {}", e))?;
     }
     println!(" ✓");
 
@@ -147,7 +150,10 @@ port = {port}
             "typescript" | "ts" => crate::codegen::generate_typescript(&schema_cache, &database),
             "python" | "py" => crate::codegen::generate_python(&schema_cache, &database),
             other => {
-                eprintln!("Unsupported language: {}. Use 'typescript' or 'python'.", other);
+                eprintln!(
+                    "Unsupported language: {}. Use 'typescript' or 'python'.",
+                    other
+                );
                 std::process::exit(1);
             }
         };
@@ -160,10 +166,16 @@ port = {port}
     println!("✨ lazypaw initialized!");
     println!();
     println!("  Config:    {}", args.output);
-    println!("  Database:  {} ({} tables, {} views)", database, table_count, view_count);
+    println!(
+        "  Database:  {} ({} tables, {} views)",
+        database, table_count, view_count
+    );
     println!();
     println!("  Start the server:");
-    println!("    lazypaw --config {} --password $LAZYPAW_PASSWORD", args.output);
+    println!(
+        "    lazypaw --config {} --password $LAZYPAW_PASSWORD",
+        args.output
+    );
     println!();
     println!("  Generate types:");
     println!("    lazypaw codegen --lang typescript --output ./src/db-types.ts");
