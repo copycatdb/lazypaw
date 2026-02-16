@@ -314,8 +314,18 @@ impl AppConfig {
             },
             password: if !args.password.is_empty() {
                 args.password
+            } else if let Some(file_pw) = file_config.password.filter(|p| !p.is_empty()) {
+                file_pw
+            } else if let Ok(pw_file) = std::env::var("LAZYPAW_PASSWORD_FILE") {
+                match std::fs::read_to_string(&pw_file) {
+                    Ok(contents) => contents.trim().to_string(),
+                    Err(e) => {
+                        tracing::warn!("Could not read LAZYPAW_PASSWORD_FILE {}: {}", pw_file, e);
+                        String::new()
+                    }
+                }
             } else {
-                file_config.password.unwrap_or(args.password)
+                args.password
             },
             database: args.database.or(file_config.database),
             listen_port: if args.listen_port != 3000 {
