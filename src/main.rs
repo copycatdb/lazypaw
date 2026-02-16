@@ -10,6 +10,7 @@ mod config;
 mod error;
 mod filters;
 mod handlers;
+mod init;
 mod openapi;
 mod pool;
 mod query;
@@ -122,6 +123,35 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     // ── Config ───────────────────────────────────────────────
     let args = Args::parse();
+
+    // Handle init subcommand
+    if let Some(SubCommand::Init {
+        ref server,
+        ref database,
+        ref user,
+        ref password,
+        port,
+        trust_cert,
+        ref lang,
+        ref output,
+    }) = args.subcmd
+    {
+        let init_args = init::InitArgs {
+            server: server.clone(),
+            database: database.clone(),
+            user: user.clone(),
+            password: password.clone(),
+            port,
+            trust_cert,
+            lang: lang.clone(),
+            output: output.clone(),
+        };
+        if let Err(e) = init::run_init(init_args).await {
+            eprintln!("Error: {}", e);
+            std::process::exit(1);
+        }
+        return Ok(());
+    }
 
     // Handle setup subcommand before initializing tracing/DB
     if let Some(SubCommand::Setup {
