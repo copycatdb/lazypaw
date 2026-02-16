@@ -12,6 +12,8 @@ mod handlers;
 mod openapi;
 mod pool;
 mod query;
+mod realtime;
+mod realtime_ws;
 mod response;
 mod router;
 mod schema;
@@ -176,7 +178,29 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         schema: schema.clone(),
         config: config.clone(),
     };
-    let app = router::build_router(state);
+
+    // ── Realtime engine (optional) ───────────────────────────
+    let engine = if config.realtime {
+        tracing::info!("Realtime enabled — initializing Change Tracking poller...");
+        let engine = realtime::RealtimeEngine::new(pool.clone(), schema.clone(), config.clone());
+        if let Err(e) = engine.init_version().await {
+            tracing::warn!("Realtime CT version init failed (non-fatal): {}", e);
+        }
+        let poll_engine = engine.clone();
+        let poll_ms = config.realtime_poll_ms;
+        tokio::spawn(async move {
+            poll_engine.poll_loop(poll_ms).await;
+        });
+        tracing::info!(
+            "Realtime poller started (poll_ms={})",
+            config.realtime_poll_ms
+        );
+        Some(engine)
+    } else {
+        None
+    };
+
+    let app = router::build_router(state, engine);
 
     // ── SIGHUP handler for schema reload ─────────────────────
     #[cfg(unix)]
