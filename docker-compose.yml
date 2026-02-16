@@ -1,0 +1,29 @@
+services:
+  db:
+    image: mcr.microsoft.com/mssql/server:2022-latest
+    environment:
+      ACCEPT_EULA: "Y"
+      MSSQL_SA_PASSWORD: "YourStrong!Pass123"
+    ports:
+      - "1433:1433"
+    healthcheck:
+      test: /opt/mssql-tools18/bin/sqlcmd -S localhost -U sa -P "YourStrong!Pass123" -Q "SELECT 1" -C -b
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 30s
+
+  lazypaw:
+    build: .
+    environment:
+      LAZYPAW_SERVER: db
+      LAZYPAW_DATABASE: master
+      LAZYPAW_USER: sa
+      LAZYPAW_PASSWORD: "YourStrong!Pass123"
+      LAZYPAW_TRUST_CERT: "true"
+      LAZYPAW_PORT: "3000"
+    ports:
+      - "3000:3000"
+    depends_on:
+      db:
+        condition: service_healthy
