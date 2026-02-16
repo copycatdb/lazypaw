@@ -158,7 +158,8 @@ fn parse_list(s: &str) -> Result<Vec<String>, Error> {
 }
 
 /// Parse an OR/AND group expression: "(col1.eq.a,col2.gt.5)"
-pub fn parse_logic_group(expr: &str) -> Result<Vec<Filter>, Error> {
+/// Supports nested and/or: "(status.eq.waiting,and(score.gt.50,name.like.*cat*))"
+pub fn parse_logic_group(expr: &str) -> Result<Vec<FilterNode>, Error> {
     let s = expr.trim();
     let inner = if s.starts_with('(') && s.ends_with(')') {
         &s[1..s.len() - 1]
@@ -168,19 +169,34 @@ pub fn parse_logic_group(expr: &str) -> Result<Vec<Filter>, Error> {
 
     // Split on commas, but respect nested parens
     let parts = split_respecting_parens(inner);
-    let mut filters = Vec::new();
+    let mut nodes = Vec::new();
 
     for part in parts {
         let part = part.trim();
         if part.is_empty() {
             continue;
         }
+        // Check for nested or(...) / and(...)
+        if let Some(inner_expr) = part.strip_prefix("or") {
+            if inner_expr.starts_with('(') && inner_expr.ends_with(')') {
+                let children = parse_logic_group(inner_expr)?;
+                nodes.push(FilterNode::Or(children));
+                continue;
+            }
+        }
+        if let Some(inner_expr) = part.strip_prefix("and") {
+            if inner_expr.starts_with('(') && inner_expr.ends_with(')') {
+                let children = parse_logic_group(inner_expr)?;
+                nodes.push(FilterNode::And(children));
+                continue;
+            }
+        }
         // Find first dot that separates column from operator
         if let Some(dot_pos) = part.find('.') {
             let col = &part[..dot_pos];
             let rest = &part[dot_pos + 1..];
             let filter = parse_filter(col, rest)?;
-            filters.push(filter);
+            nodes.push(FilterNode::Condition(filter));
         } else {
             return Err(Error::BadRequest(format!(
                 "Invalid filter in group: {}",
@@ -189,7 +205,7 @@ pub fn parse_logic_group(expr: &str) -> Result<Vec<Filter>, Error> {
         }
     }
 
-    Ok(filters)
+    Ok(nodes)
 }
 
 /// Split a string by commas, but don't split inside parentheses.
@@ -270,9 +286,30 @@ mod tests {
 
     #[test]
     fn test_logic_group() {
-        let filters = parse_logic_group("(name.eq.alice,age.gt.25)").unwrap();
-        assert_eq!(filters.len(), 2);
-        assert_eq!(filters[0].column, "name");
-        assert_eq!(filters[1].column, "age");
+        let nodes = parse_logic_group("(name.eq.alice,age.gt.25)").unwrap();
+        assert_eq!(nodes.len(), 2);
+        match &nodes[0] {
+            FilterNode::Condition(f) => assert_eq!(f.column, "name"),
+            _ => panic!("Expected Condition"),
+        }
+        match &nodes[1] {
+            FilterNode::Condition(f) => assert_eq!(f.column, "age"),
+            _ => panic!("Expected Condition"),
+        }
+    }
+
+    #[test]
+    fn test_nested_logic_group() {
+        let nodes =
+            parse_logic_group("(status.eq.waiting,and(score.gt.50,name.like.*cat*))").unwrap();
+        assert_eq!(nodes.len(), 2);
+        match &nodes[0] {
+            FilterNode::Condition(f) => assert_eq!(f.column, "status"),
+            _ => panic!("Expected Condition"),
+        }
+        match &nodes[1] {
+            FilterNode::And(children) => assert_eq!(children.len(), 2),
+            _ => panic!("Expected And"),
+        }
     }
 }
