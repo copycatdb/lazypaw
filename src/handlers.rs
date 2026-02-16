@@ -39,23 +39,30 @@ pub async fn handle_get(
     let schema_cache = state.schema.read().await;
     let table = schema_cache
         .get_table(&schema_name, &table_name)
-        .ok_or_else(|| Error::NotFound(format!("Table not found: {}.{}", schema_name, table_name)))?;
+        .ok_or_else(|| {
+            Error::NotFound(format!("Table not found: {}.{}", schema_name, table_name))
+        })?;
 
     // Auth
-    let auth_header = headers
-        .get("authorization")
-        .and_then(|v| v.to_str().ok());
+    let auth_header = headers.get("authorization").and_then(|v| v.to_str().ok());
     let claims = auth::authenticate(auth_header, &state.config)?;
 
     // Parse parameters
     let format = response::parse_accept(headers.get("accept").and_then(|v| v.to_str().ok()));
     let prefer = response::parse_prefer(headers.get("prefer").and_then(|v| v.to_str().ok()));
 
-    let select_str = query_params.get("select").map(|s| s.as_str()).unwrap_or("*");
+    let select_str = query_params
+        .get("select")
+        .map(|s| s.as_str())
+        .unwrap_or("*");
     let select_nodes = select::parse_select(select_str)?;
 
-    let limit = query_params.get("limit").and_then(|v| v.parse::<i64>().ok());
-    let offset = query_params.get("offset").and_then(|v| v.parse::<i64>().ok());
+    let limit = query_params
+        .get("limit")
+        .and_then(|v| v.parse::<i64>().ok());
+    let offset = query_params
+        .get("offset")
+        .and_then(|v| v.parse::<i64>().ok());
 
     // Parse Range header as fallback for limit/offset
     let (range_limit, range_offset) = parse_range_header(&headers);
@@ -72,7 +79,12 @@ pub async fn handle_get(
     let embeds_preview = select::select_embeds(&select_nodes);
     let mut extra_join_cols: Vec<String> = Vec::new();
     for embed in &embeds_preview {
-        if let Some(embed_info) = schema_cache.find_embed(&schema_name, &table_name, &embed.name, embed.fk_hint.as_deref()) {
+        if let Some(embed_info) = schema_cache.find_embed(
+            &schema_name,
+            &table_name,
+            &embed.name,
+            embed.fk_hint.as_deref(),
+        ) {
             extra_join_cols.push(embed_info.source_column.clone());
         }
     }
@@ -82,7 +94,9 @@ pub async fn handle_get(
         let selected_cols = select::select_columns(&select_nodes);
         let mut augmented = select_nodes.clone();
         for col in &extra_join_cols {
-            if !selected_cols.iter().any(|c| c.eq_ignore_ascii_case(col)) && !selected_cols.contains(&"*") {
+            if !selected_cols.iter().any(|c| c.eq_ignore_ascii_case(col))
+                && !selected_cols.contains(&"*")
+            {
                 augmented.push(select::SelectNode::Column(col.clone()));
             }
         }
@@ -104,15 +118,8 @@ pub async fn handle_get(
 
     // Get count if requested
     let total_count = if prefer.count {
-        let count_query = query::build_select(
-            table,
-            &select_nodes,
-            &filter_nodes,
-            &[],
-            None,
-            None,
-            true,
-        )?;
+        let count_query =
+            query::build_select(table, &select_nodes, &filter_nodes, &[], None, None, true)?;
         Some(execute_count(&state, &count_query, &claims).await?)
     } else {
         None
@@ -178,11 +185,7 @@ pub async fn handle_get(
             }
 
             let row_count = rows.len() as i64;
-            let range = build_content_range(
-                final_offset.unwrap_or(0),
-                row_count,
-                total_count,
-            );
+            let range = build_content_range(final_offset.unwrap_or(0), row_count, total_count);
 
             match format {
                 ResponseFormat::SingleObjectJson => {
@@ -250,13 +253,10 @@ pub async fn handle_post(
 
     let body_str = String::from_utf8(body.to_vec())
         .map_err(|_| Error::BadRequest("Invalid UTF-8 body".to_string()))?;
-    let json: JsonValue =
-        serde_json::from_str(&body_str).map_err(|e| Error::BadRequest(format!("Invalid JSON: {}", e)))?;
+    let json: JsonValue = serde_json::from_str(&body_str)
+        .map_err(|e| Error::BadRequest(format!("Invalid JSON: {}", e)))?;
 
-    let is_upsert = prefer
-        .resolution
-        .as_deref()
-        == Some("merge-duplicates");
+    let is_upsert = prefer.resolution.as_deref() == Some("merge-duplicates");
 
     // Normalize to array of objects
     let objects: Vec<&serde_json::Map<String, JsonValue>> = match &json {
@@ -268,7 +268,11 @@ pub async fn handle_post(
             })
             .collect::<Result<Vec<_>, _>>()?,
         JsonValue::Object(obj) => vec![obj],
-        _ => return Err(Error::BadRequest("Body must be object or array".to_string())),
+        _ => {
+            return Err(Error::BadRequest(
+                "Body must be object or array".to_string(),
+            ))
+        }
     };
 
     if objects.is_empty() {
@@ -370,8 +374,7 @@ pub async fn handle_delete(
 
     let built = query::build_delete(&table, &filter_nodes)?;
 
-    let rows =
-        execute_dml_query(&state, &built.sql, &built.params, &claims, &prefer).await?;
+    let rows = execute_dml_query(&state, &built.sql, &built.params, &claims, &prefer).await?;
 
     build_mutation_response(rows, &prefer, &format, StatusCode::OK)
 }
@@ -495,9 +498,7 @@ fn build_filters_from_params(
     query_params: &HashMap<String, String>,
     table: &crate::schema::TableInfo,
 ) -> Result<Vec<FilterNode>, Error> {
-    let reserved = [
-        "select", "order", "limit", "offset", "and", "or",
-    ];
+    let reserved = ["select", "order", "limit", "offset", "and", "or"];
 
     let mut filter_nodes: Vec<FilterNode> = Vec::new();
 
@@ -627,15 +628,11 @@ async fn execute_arrow_query(
         return rows_to_record_batch(&rows);
     }
 
-    writer
-        .finish()
-        .map_err(|e| Error::Internal(e.to_string()))
+    writer.finish().map_err(|e| Error::Internal(e.to_string()))
 }
 
 /// Convert Vec<Row> to a RecordBatch.
-fn rows_to_record_batch(
-    rows: &[claw::Row],
-) -> Result<arrow::record_batch::RecordBatch, Error> {
+fn rows_to_record_batch(rows: &[claw::Row]) -> Result<arrow::record_batch::RecordBatch, Error> {
     if rows.is_empty() {
         // Return empty batch with no schema
         let schema = std::sync::Arc::new(arrow::datatypes::Schema::empty());
@@ -654,9 +651,7 @@ fn rows_to_record_batch(
         writer.on_row_done();
     }
 
-    writer
-        .finish()
-        .map_err(|e| Error::Internal(e.to_string()))
+    writer.finish().map_err(|e| Error::Internal(e.to_string()))
 }
 
 /// Write a SqlValue into an ArrowRowWriter at the given column.
@@ -686,7 +681,9 @@ fn write_sql_value_to_arrow(writer: &mut claw::ArrowRowWriter, col: usize, val: 
         SqlValue::Guid(None) => writer.write_null(col),
         SqlValue::Binary(Some(v)) => writer.write_bytes(col, v),
         SqlValue::Binary(None) => writer.write_null(col),
-        SqlValue::Numeric(Some(v)) => writer.write_decimal(col, v.value(), v.precision(), v.scale()),
+        SqlValue::Numeric(Some(v)) => {
+            writer.write_decimal(col, v.value(), v.precision(), v.scale())
+        }
         SqlValue::Numeric(None) => writer.write_null(col),
         SqlValue::DateTime(_) | SqlValue::SmallDateTime(_) | SqlValue::DateTime2(_) => {
             // For datetime types, convert to string and write as str
@@ -811,33 +808,31 @@ fn build_mutation_response(
                 None,
             ))
         }
-        ReturnMode::Representation => {
-            match format {
-                ResponseFormat::SingleObjectJson => {
-                    if rows.len() != 1 {
-                        return Err(Error::SingleObjectExpected(rows.len()));
-                    }
-                    let json = serde_json::to_string(&rows[0]).unwrap_or_default();
-                    Ok(response::build_response(
-                        json.into_bytes(),
-                        "application/vnd.pgrst.object+json; charset=utf-8",
-                        success_status,
-                        None,
-                        None,
-                    ))
+        ReturnMode::Representation => match format {
+            ResponseFormat::SingleObjectJson => {
+                if rows.len() != 1 {
+                    return Err(Error::SingleObjectExpected(rows.len()));
                 }
-                _ => {
-                    let json = response::rows_to_json(&rows);
-                    Ok(response::build_response(
-                        json.into_bytes(),
-                        "application/json; charset=utf-8",
-                        success_status,
-                        None,
-                        None,
-                    ))
-                }
+                let json = serde_json::to_string(&rows[0]).unwrap_or_default();
+                Ok(response::build_response(
+                    json.into_bytes(),
+                    "application/vnd.pgrst.object+json; charset=utf-8",
+                    success_status,
+                    None,
+                    None,
+                ))
             }
-        }
+            _ => {
+                let json = response::rows_to_json(&rows);
+                Ok(response::build_response(
+                    json.into_bytes(),
+                    "application/json; charset=utf-8",
+                    success_status,
+                    None,
+                    None,
+                ))
+            }
+        },
     }
 }
 
@@ -856,12 +851,14 @@ async fn handle_embeds(
 ) -> Result<(), Error> {
     for embed in embeds {
         let embed_info = schema_cache
-            .find_embed(schema_name, table_name, &embed.name, embed.fk_hint.as_deref())
+            .find_embed(
+                schema_name,
+                table_name,
+                &embed.name,
+                embed.fk_hint.as_deref(),
+            )
             .ok_or_else(|| {
-                Error::BadRequest(format!(
-                    "No relationship found for embed: {}",
-                    embed.name
-                ))
+                Error::BadRequest(format!("No relationship found for embed: {}", embed.name))
             })?;
 
         let target_table = schema_cache
@@ -898,8 +895,12 @@ async fn handle_embeds(
         // Build embed column list — always include the join column
         let mut embed_col_nodes = embed.columns.clone();
         let embed_selected = select::select_columns(&embed_col_nodes);
-        if !embed_selected.is_empty() && !select::has_star(&embed_col_nodes) 
-            && !embed_selected.iter().any(|c| c.eq_ignore_ascii_case(&embed_info.target_column)) {
+        if !embed_selected.is_empty()
+            && !select::has_star(&embed_col_nodes)
+            && !embed_selected
+                .iter()
+                .any(|c| c.eq_ignore_ascii_case(&embed_info.target_column))
+        {
             embed_col_nodes.push(SelectNode::Column(embed_info.target_column.clone()));
         }
         let embed_columns = build_embed_column_list(target_table, &embed_col_nodes);
@@ -950,7 +951,6 @@ async fn handle_embeds(
         let embed_json: Vec<serde_json::Map<String, JsonValue>> =
             embed_rows.iter().map(types::row_to_json).collect();
 
-
         // Group embed results by the join column
         let mut grouped: HashMap<String, Vec<JsonValue>> = HashMap::new();
         for erow in &embed_json {
@@ -978,10 +978,7 @@ async fn handle_embeds(
                 })
                 .unwrap_or_default();
 
-            let embedded = grouped
-                .get(&source_val)
-                .cloned()
-                .unwrap_or_default();
+            let embedded = grouped.get(&source_val).cloned().unwrap_or_default();
 
             match embed_info.join_type {
                 crate::schema::EmbedJoinType::ManyToOne => {
@@ -1000,9 +997,15 @@ async fn handle_embeds(
 
         // Strip injected join column from embed results if not originally requested
         let originally_selected: Vec<String> = select::select_columns(&embed.columns)
-            .iter().map(|s| s.to_string()).collect();
+            .iter()
+            .map(|s| s.to_string())
+            .collect();
         let has_star_select = embed.columns.is_empty() || select::has_star(&embed.columns);
-        if !has_star_select && !originally_selected.iter().any(|c| c.eq_ignore_ascii_case(&embed_info.target_column)) {
+        if !has_star_select
+            && !originally_selected
+                .iter()
+                .any(|c| c.eq_ignore_ascii_case(&embed_info.target_column))
+        {
             for row in rows.iter_mut() {
                 if let Some(JsonValue::Array(arr)) = row.get_mut(&embed.name) {
                     for item in arr.iter_mut() {
@@ -1020,11 +1023,17 @@ async fn handle_embeds(
     // Strip injected parent join columns
     if !extra_join_cols.is_empty() {
         let original_selected: Vec<String> = select::select_columns(original_select_nodes)
-            .iter().map(|s| s.to_string()).collect();
-        let parent_has_star = original_select_nodes.is_empty() || select::has_star(original_select_nodes);
+            .iter()
+            .map(|s| s.to_string())
+            .collect();
+        let parent_has_star =
+            original_select_nodes.is_empty() || select::has_star(original_select_nodes);
         if !parent_has_star {
             for col in extra_join_cols {
-                if !original_selected.iter().any(|c| c.eq_ignore_ascii_case(col)) {
+                if !original_selected
+                    .iter()
+                    .any(|c| c.eq_ignore_ascii_case(col))
+                {
                     for row in rows.iter_mut() {
                         row.remove(col.as_str());
                     }
@@ -1037,10 +1046,7 @@ async fn handle_embeds(
 }
 
 /// Build column list for an embed query.
-fn build_embed_column_list(
-    table: &crate::schema::TableInfo,
-    nodes: &[SelectNode],
-) -> String {
+fn build_embed_column_list(table: &crate::schema::TableInfo, nodes: &[SelectNode]) -> String {
     if nodes.is_empty() || select::has_star(nodes) {
         table
             .columns
