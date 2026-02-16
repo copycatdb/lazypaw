@@ -1,0 +1,61 @@
+name: npm publish
+on:
+  push:
+    tags: ['v*']
+  workflow_dispatch:
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          registry-url: https://registry.npmjs.org
+      
+      # Download release binaries (built by existing release workflow)
+      - name: Download binaries
+        run: |
+          VERSION=${GITHUB_REF_NAME#v}
+          for target in linux-x64 linux-arm64 darwin-x64 darwin-arm64 win32-x64 win32-arm64; do
+            mkdir -p npm/$target/bin
+            # Map npm platform names to release asset names
+            case $target in
+              linux-x64)    ASSET="lazypaw-linux-x64" ;;
+              linux-arm64)  ASSET="lazypaw-linux-arm64" ;;
+              darwin-x64)   ASSET="lazypaw-darwin-x64" ;;
+              darwin-arm64) ASSET="lazypaw-darwin-arm64" ;;
+              win32-x64)    ASSET="lazypaw-windows-x64.exe" ;;
+              win32-arm64)  ASSET="lazypaw-windows-arm64.exe" ;;
+            esac
+            curl -L "https://github.com/copycatdb/lazypaw/releases/download/${GITHUB_REF_NAME}/${ASSET}" \
+              -o npm/$target/bin/lazypaw$(echo $target | grep -q win32 && echo .exe)
+            chmod +x npm/$target/bin/*
+          done
+      
+      # Update versions
+      - name: Update versions
+        run: |
+          VERSION=${GITHUB_REF_NAME#v}
+          for dir in npm/lazypaw npm/linux-x64 npm/linux-arm64 npm/darwin-x64 npm/darwin-arm64 npm/win32-x64 npm/win32-arm64; do
+            cd $dir
+            npm version $VERSION --no-git-tag-version
+            cd -
+          done
+      
+      # Publish platform packages first
+      - name: Publish platform packages
+        run: |
+          for dir in npm/linux-x64 npm/linux-arm64 npm/darwin-x64 npm/darwin-arm64 npm/win32-x64 npm/win32-arm64; do
+            cd $dir && npm publish --access public && cd -
+          done
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+      
+      # Publish main package
+      - name: Publish main package
+        run: cd npm/lazypaw && npm publish --access public
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
