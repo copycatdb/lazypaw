@@ -122,6 +122,16 @@ pub enum SubCommand {
         #[arg(long, default_value = "lazypaw_svc")]
         service_account: String,
     },
+    /// Generate typed client code from database schema
+    Codegen {
+        /// Output language: typescript or python
+        #[arg(long)]
+        lang: String,
+
+        /// Output file path
+        #[arg(long)]
+        output: String,
+    },
 }
 
 /// TOML config file structure.
