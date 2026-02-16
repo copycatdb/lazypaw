@@ -1,3 +1,4 @@
+#![allow(dead_code)]
 //! Error types and HTTP status mapping.
 //!
 //! Provides a PostgREST-compatible error format and maps SQL Server

@@ -1,3 +1,4 @@
+#![allow(dead_code)]
 //! JWT authentication and role mapping.
 
 use crate::config::AppConfig;
@@ -64,9 +65,7 @@ pub fn authenticate(
             if config.anon_role.is_some() {
                 return Ok(None);
             } else {
-                return Err(Error::Unauthorized(
-                    "Authentication required".to_string(),
-                ));
+                return Err(Error::Unauthorized("Authentication required".to_string()));
             }
         }
     };
@@ -76,10 +75,8 @@ pub fn authenticate(
     validation.validate_exp = true;
     validation.required_spec_claims.clear(); // Don't require any specific claims
 
-    let token_data =
-        decode::<Claims>(token, &key, &validation).map_err(|e| {
-            Error::Unauthorized(format!("Invalid JWT: {}", e))
-        })?;
+    let token_data = decode::<Claims>(token, &key, &validation)
+        .map_err(|e| Error::Unauthorized(format!("Invalid JWT: {}", e)))?;
 
     Ok(Some(token_data.claims))
 }
@@ -88,10 +85,7 @@ pub fn authenticate(
 ///
 /// This sets the SQL Server execution context to the role specified
 /// in the JWT and passes claims as session context variables.
-pub fn build_session_context_sql(
-    claims: &Option<Claims>,
-    config: &AppConfig,
-) -> Vec<String> {
+pub fn build_session_context_sql(claims: &Option<Claims>, config: &AppConfig) -> Vec<String> {
     let mut stmts = Vec::new();
 
     let role = claims

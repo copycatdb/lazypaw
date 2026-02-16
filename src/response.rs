@@ -128,14 +128,11 @@ pub fn rows_to_csv(
 }
 
 /// Format an Arrow RecordBatch as IPC stream bytes.
-pub fn record_batch_to_ipc(
-    batch: &arrow::record_batch::RecordBatch,
-) -> Result<Vec<u8>, Error> {
+pub fn record_batch_to_ipc(batch: &arrow::record_batch::RecordBatch) -> Result<Vec<u8>, Error> {
     let mut buf = Vec::new();
     {
-        let mut writer =
-            arrow_ipc::writer::StreamWriter::try_new(&mut buf, &batch.schema())
-                .map_err(|e| Error::Internal(e.to_string()))?;
+        let mut writer = arrow_ipc::writer::StreamWriter::try_new(&mut buf, &batch.schema())
+            .map_err(|e| Error::Internal(e.to_string()))?;
         writer
             .write(batch)
             .map_err(|e| Error::Internal(e.to_string()))?;
@@ -183,8 +180,5 @@ pub fn build_response(
 
     builder
         .body(axum::body::Body::from(body))
-        .unwrap_or_else(|_| {
-            (StatusCode::INTERNAL_SERVER_ERROR, "Internal error")
-                .into_response()
-        })
+        .unwrap_or_else(|_| (StatusCode::INTERNAL_SERVER_ERROR, "Internal error").into_response())
 }

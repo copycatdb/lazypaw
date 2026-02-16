@@ -1,3 +1,4 @@
+#![allow(dead_code)]
 //! Schema introspection & in-memory model.
 //!
 //! Reads tables, views, columns, types, PKs, FKs, and unique constraints
@@ -53,7 +54,9 @@ impl TableInfo {
 
     /// Get column info by name.
     pub fn column(&self, name: &str) -> Option<&ColumnInfo> {
-        self.columns.iter().find(|c| c.name.eq_ignore_ascii_case(name))
+        self.columns
+            .iter()
+            .find(|c| c.name.eq_ignore_ascii_case(name))
     }
 
     /// Columns that can be used in INSERT (non-identity, non-computed).
@@ -238,10 +241,7 @@ pub async fn load_schema(pool: &Arc<Pool>) -> Result<SchemaCache, Error> {
             .ok()
             .flatten()
             .map(|v| v as i32);
-        let scale: Option<i32> = row
-            .try_get::<i32, _>("NUMERIC_SCALE")
-            .ok()
-            .flatten();
+        let scale: Option<i32> = row.try_get::<i32, _>("NUMERIC_SCALE").ok().flatten();
         let is_nullable: &str = row.get("IS_NULLABLE").unwrap_or("YES");
         let ordinal: i32 = row.get("ORDINAL_POSITION").unwrap_or(0);
         let is_identity: i32 = row.get("IS_IDENTITY").unwrap_or(0);
