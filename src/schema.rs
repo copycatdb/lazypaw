@@ -22,6 +22,7 @@ pub struct ColumnInfo {
     pub ordinal_position: i32,
     pub is_identity: bool,
     pub has_default: bool,
+    pub is_computed: bool,
 }
 
 /// A foreign key relationship.
@@ -221,7 +222,8 @@ pub async fn load_schema(pool: &Arc<Pool>) -> Result<SchemaCache, Error> {
             "SELECT c.TABLE_SCHEMA, c.TABLE_NAME, c.COLUMN_NAME, c.DATA_TYPE, \
                     c.CHARACTER_MAXIMUM_LENGTH, c.NUMERIC_PRECISION, c.NUMERIC_SCALE, \
                     c.IS_NULLABLE, c.ORDINAL_POSITION, c.COLUMN_DEFAULT, \
-                    COLUMNPROPERTY(OBJECT_ID(c.TABLE_SCHEMA + '.' + c.TABLE_NAME), c.COLUMN_NAME, 'IsIdentity') AS IS_IDENTITY \
+                    COLUMNPROPERTY(OBJECT_ID(c.TABLE_SCHEMA + '.' + c.TABLE_NAME), c.COLUMN_NAME, 'IsIdentity') AS IS_IDENTITY, \
+                    COLUMNPROPERTY(OBJECT_ID(c.TABLE_SCHEMA + '.' + c.TABLE_NAME), c.COLUMN_NAME, 'IsComputed') AS IS_COMPUTED \
              FROM INFORMATION_SCHEMA.COLUMNS c \
              ORDER BY c.TABLE_SCHEMA, c.TABLE_NAME, c.ORDINAL_POSITION",
             &[],
@@ -247,6 +249,7 @@ pub async fn load_schema(pool: &Arc<Pool>) -> Result<SchemaCache, Error> {
         let is_nullable: &str = row.get("IS_NULLABLE").unwrap_or("YES");
         let ordinal: i32 = row.get("ORDINAL_POSITION").unwrap_or(0);
         let is_identity: i32 = row.get("IS_IDENTITY").unwrap_or(0);
+        let is_computed: i32 = row.get("IS_COMPUTED").unwrap_or(0);
         let has_default = row
             .try_get::<&str, _>("COLUMN_DEFAULT")
             .ok()
@@ -265,6 +268,7 @@ pub async fn load_schema(pool: &Arc<Pool>) -> Result<SchemaCache, Error> {
                 ordinal_position: ordinal,
                 is_identity: is_identity == 1,
                 has_default,
+                is_computed: is_computed == 1,
             });
         }
     }

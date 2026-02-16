@@ -5,6 +5,7 @@
 //! Handles SIGHUP for live schema reload.
 
 mod auth;
+mod codegen;
 mod config;
 mod error;
 mod filters;
@@ -129,6 +130,32 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     }) = &args.subcmd
     {
         run_setup(roles, service_account);
+        return Ok(());
+    }
+
+    // Handle codegen subcommand
+    if let Some(SubCommand::Codegen { lang, output }) = &args.subcmd.clone() {
+        let config = AppConfig::from_args(args);
+        let pool = Pool::new(config.clone());
+        // Verify connection
+        {
+            let mut conn = pool.get().await?;
+            let client = conn.client();
+            let stream = client.execute("SELECT 1 AS ok", &[]).await?;
+            let _ = stream.into_first_result().await?;
+        }
+        let schema_cache = schema::load_schema(&pool).await?;
+        let db_name = config.database.as_deref().unwrap_or("unknown");
+        let content = match lang.as_str() {
+            "typescript" | "ts" => codegen::generate_typescript(&schema_cache, db_name),
+            "python" | "py" => codegen::generate_python(&schema_cache, db_name),
+            other => {
+                eprintln!("Unsupported language: {}. Use 'typescript' or 'python'.", other);
+                std::process::exit(1);
+            }
+        };
+        std::fs::write(output, &content)?;
+        println!("Generated {} ({} bytes) → {}", lang, content.len(), output);
         return Ok(());
     }
 
