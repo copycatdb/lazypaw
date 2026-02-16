@@ -28,8 +28,9 @@ use handlers::AppState;
 use pool::Pool;
 use std::sync::Arc;
 use tokio::sync::RwLock;
+use tracing_subscriber::layer::SubscriberExt;
+use tracing_subscriber::util::SubscriberInitExt;
 use tracing_subscriber::EnvFilter;
-use tracing_subscriber::prelude::*;
 
 #[cfg(feature = "otel")]
 mod telemetry;
@@ -197,14 +198,52 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     }
 
     // ── Tracing ──────────────────────────────────────────────
-    tracing_subscriber::fmt()
-        .with_env_filter(
-            EnvFilter::try_from_default_env()
-                .unwrap_or_else(|_| EnvFilter::new("lazypaw=info,tower_http=info")),
-        )
-        .init();
-
     let config = AppConfig::from_args(args);
+
+    let env_filter = EnvFilter::try_from_default_env().unwrap_or_else(|_| {
+        EnvFilter::new(format!(
+            "lazypaw={},tower_http={}",
+            config.log_level, config.log_level
+        ))
+    });
+
+    let fmt_layer = tracing_subscriber::fmt::layer();
+    let registry = tracing_subscriber::registry().with(env_filter);
+
+    if config.log_format == "json" {
+        let json_layer = fmt_layer.json();
+        #[cfg(feature = "otel")]
+        {
+            if config.otel_enabled {
+                let otel_layer =
+                    telemetry::init_otel_tracing(&config.otel_endpoint, &config.otel_service_name)
+                        .expect("Failed to init OpenTelemetry");
+                registry.with(json_layer).with(otel_layer).init();
+            } else {
+                registry.with(json_layer).init();
+            }
+        }
+        #[cfg(not(feature = "otel"))]
+        {
+            registry.with(json_layer).init();
+        }
+    } else {
+        #[cfg(feature = "otel")]
+        {
+            if config.otel_enabled {
+                let otel_layer =
+                    telemetry::init_otel_tracing(&config.otel_endpoint, &config.otel_service_name)
+                        .expect("Failed to init OpenTelemetry");
+                registry.with(fmt_layer).with(otel_layer).init();
+            } else {
+                registry.with(fmt_layer).init();
+            }
+        }
+        #[cfg(not(feature = "otel"))]
+        {
+            registry.with(fmt_layer).init();
+        }
+    }
 
     tracing::info!(
         "😴 lazypaw starting — {}:{} db={:?}",
