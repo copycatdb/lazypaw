@@ -3,6 +3,7 @@
 
 use clap::Parser;
 use serde::Deserialize;
+use std::collections::HashMap;
 
 /// 😴 lazypaw — Instant REST API from your SQL Server database
 #[derive(Parser, Debug, Clone)]
@@ -59,6 +60,60 @@ pub struct Args {
     /// Schemas to expose (comma-separated, default: all)
     #[arg(long, env = "LAZYPAW_SCHEMAS")]
     pub schemas: Option<String>,
+
+    /// Auth mode: "jwt-secret" or "oidc"
+    #[arg(long, env = "LAZYPAW_AUTH_MODE")]
+    pub auth_mode: Option<String>,
+
+    /// OIDC issuer URL
+    #[arg(long, env = "LAZYPAW_OIDC_ISSUER")]
+    pub oidc_issuer: Option<String>,
+
+    /// OIDC expected audience
+    #[arg(long, env = "LAZYPAW_OIDC_AUDIENCE")]
+    pub oidc_audience: Option<String>,
+
+    /// JWT claim for role lookup (supports dot notation)
+    #[arg(long, env = "LAZYPAW_ROLE_CLAIM", default_value = "role")]
+    pub role_claim: String,
+
+    /// Comma-separated claims to inject as session context
+    #[arg(long, env = "LAZYPAW_CONTEXT_CLAIMS")]
+    pub context_claims: Option<String>,
+
+    /// Database auth mode: "password", "managed-identity", "service-principal"
+    #[arg(long, env = "LAZYPAW_DB_AUTH", default_value = "password")]
+    pub db_auth: String,
+
+    /// Service principal tenant ID
+    #[arg(long, env = "LAZYPAW_SP_TENANT_ID")]
+    pub sp_tenant_id: Option<String>,
+
+    /// Service principal client ID
+    #[arg(long, env = "LAZYPAW_SP_CLIENT_ID")]
+    pub sp_client_id: Option<String>,
+
+    /// Service principal client secret
+    #[arg(long, env = "LAZYPAW_SP_CLIENT_SECRET")]
+    pub sp_client_secret: Option<String>,
+
+    /// Subcommand
+    #[command(subcommand)]
+    pub subcmd: Option<SubCommand>,
+}
+
+#[derive(Parser, Debug, Clone)]
+pub enum SubCommand {
+    /// Generate SQL setup script for roles and impersonation
+    Setup {
+        /// Comma-separated list of database roles
+        #[arg(long)]
+        roles: String,
+
+        /// Service account name
+        #[arg(long, default_value = "lazypaw_svc")]
+        service_account: String,
+    },
 }
 
 /// TOML config file structure.
@@ -76,6 +131,40 @@ pub struct FileConfig {
     pub pool_size: Option<usize>,
     pub trust_cert: Option<bool>,
     pub schemas: Option<String>,
+    pub auth: Option<FileAuthConfig>,
+    pub db_config: Option<FileDatabaseConfig>,
+}
+
+#[derive(Debug, Deserialize, Default, Clone)]
+pub struct FileAuthConfig {
+    pub mode: Option<String>,
+    pub issuer: Option<String>,
+    pub audience: Option<String>,
+    pub role_claim: Option<String>,
+    pub anon_role: Option<String>,
+    pub context_claims: Option<Vec<String>>,
+    pub role_map: Option<HashMap<String, String>>,
+}
+
+#[derive(Debug, Deserialize, Default, Clone)]
+pub struct FileDatabaseConfig {
+    pub auth: Option<String>,
+}
+
+/// Auth mode enumeration.
+#[derive(Debug, Clone, PartialEq)]
+pub enum AuthMode {
+    None,
+    JwtSecret,
+    Oidc,
+}
+
+/// Database authentication mode.
+#[derive(Debug, Clone, PartialEq)]
+pub enum DbAuthMode {
+    Password,
+    ManagedIdentity,
+    ServicePrincipal,
 }
 
 /// Merged configuration.
@@ -93,6 +182,16 @@ pub struct AppConfig {
     pub pool_size: usize,
     pub trust_cert: bool,
     pub schemas: Option<Vec<String>>,
+    pub auth_mode: AuthMode,
+    pub oidc_issuer: Option<String>,
+    pub oidc_audience: Option<String>,
+    pub role_claim: String,
+    pub context_claims: Vec<String>,
+    pub role_map: HashMap<String, String>,
+    pub db_auth: DbAuthMode,
+    pub sp_tenant_id: Option<String>,
+    pub sp_client_id: Option<String>,
+    pub sp_client_secret: Option<String>,
 }
 
 impl AppConfig {
@@ -110,11 +209,72 @@ impl AppConfig {
             FileConfig::default()
         };
 
+        let file_auth = file_config.auth.clone().unwrap_or_default();
+
         // CLI args override file config
         let schemas = args
             .schemas
+            .clone()
             .or(file_config.schemas)
             .map(|s| s.split(',').map(|s| s.trim().to_string()).collect());
+
+        let anon_role = args
+            .anon_role
+            .clone()
+            .or(file_auth.anon_role.clone())
+            .or(file_config.anon_role);
+
+        let jwt_secret = args.jwt_secret.clone().or(file_config.jwt_secret);
+
+        // Determine auth mode
+        let auth_mode_str = args.auth_mode.clone().or(file_auth.mode.clone());
+        let auth_mode = match auth_mode_str.as_deref() {
+            Some("oidc") => AuthMode::Oidc,
+            Some("jwt-secret") => AuthMode::JwtSecret,
+            _ => {
+                if jwt_secret.is_some() {
+                    AuthMode::JwtSecret
+                } else {
+                    AuthMode::None
+                }
+            }
+        };
+
+        let oidc_issuer = args.oidc_issuer.clone().or(file_auth.issuer);
+        let oidc_audience = args.oidc_audience.clone().or(file_auth.audience);
+
+        let role_claim = if args.role_claim != "role" {
+            args.role_claim.clone()
+        } else {
+            file_auth.role_claim.unwrap_or(args.role_claim.clone())
+        };
+
+        let context_claims: Vec<String> = if let Some(ref cc) = args.context_claims {
+            cc.split(',').map(|s| s.trim().to_string()).collect()
+        } else if let Some(cc) = file_auth.context_claims {
+            cc
+        } else {
+            Vec::new()
+        };
+
+        let role_map = file_auth.role_map.unwrap_or_default();
+
+        // DB auth mode
+        let db_auth_str = if args.db_auth != "password" {
+            args.db_auth.clone()
+        } else if let Some(ref db_section) = file_config.db_config {
+            db_section
+                .auth
+                .clone()
+                .unwrap_or_else(|| "password".to_string())
+        } else {
+            "password".to_string()
+        };
+        let db_auth = match db_auth_str.as_str() {
+            "managed-identity" => DbAuthMode::ManagedIdentity,
+            "service-principal" => DbAuthMode::ServicePrincipal,
+            _ => DbAuthMode::Password,
+        };
 
         AppConfig {
             server: if args.server != "localhost" {
@@ -148,8 +308,8 @@ impl AppConfig {
             } else {
                 file_config.schema.unwrap_or(args.schema)
             },
-            jwt_secret: args.jwt_secret.or(file_config.jwt_secret),
-            anon_role: args.anon_role.or(file_config.anon_role),
+            jwt_secret,
+            anon_role,
             pool_size: if args.pool_size != 10 {
                 args.pool_size
             } else {
@@ -157,6 +317,16 @@ impl AppConfig {
             },
             trust_cert: args.trust_cert || file_config.trust_cert.unwrap_or(false),
             schemas,
+            auth_mode,
+            oidc_issuer,
+            oidc_audience,
+            role_claim,
+            context_claims,
+            role_map,
+            db_auth,
+            sp_tenant_id: args.sp_tenant_id,
+            sp_client_id: args.sp_client_id,
+            sp_client_secret: args.sp_client_secret,
         }
     }
 }
